@@ -2,12 +2,18 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ "main" ] # O "master", controlla il nome del tuo branch principale
+    branches: [ "main" ] # Assicurati che il tuo branch principale si chiami 'main' o 'master'
 
+# Permessi necessari per il deploy
 permissions:
   contents: read
   pages: write
   id-token: write
+
+# Permette un solo deploy alla volta
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -15,22 +21,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          
+          cache: 'npm'
+
       - name: Install dependencies
         run: npm install
-        
-      - name: Build
+
+      - name: Build website
         run: npm run build
-        
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist
+          path: ./dist # Pubblica solo la cartella costruita
 
   deploy:
     environment:
@@ -42,4 +49,3 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
