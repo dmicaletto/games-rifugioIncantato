@@ -1,35 +1,55 @@
+const CACHE_NAME = 'rifugio-v1';
+const REPO_NAME = '/games-rifugioIncantato';
 
-// Questo file permette all'app di essere installata e funzionare offline
-const CACHE_NAME = 'RufugioIncantato-v1';
+// File da mettere in cache subito
 const urlsToCache = [
-  './',
-  './index.html',
-  './manifest.json'
+  `${REPO_NAME}/`,
+  `${REPO_NAME}/index.html`,
+  `${REPO_NAME}/manifest.json`,
+  // Vite genererà nomi di file hash, quindi per ora cachiamo la root
+  // I file statici JS/CSS verranno intercettati dalla fetch strategy sotto
 ];
 
-// Installazione del Service Worker
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        console.log('Cache aperta');
+        console.log('Aperta cache');
         return cache.addAll(urlsToCache);
       })
   );
 });
 
-// Intercettazione richieste (necessario per PWA)
 self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
-        // Restituisce la cache se c'è, altrimenti fa la richiesta di rete
-        return response || fetch(event.request);
+        // Cache hit - return response
+        if (response) {
+          return response;
+        }
+        return fetch(event.request).then(
+          (response) => {
+            // Controlla se abbiamo ricevuto una risposta valida
+            if(!response || response.status !== 200 || response.type !== 'basic') {
+              return response;
+            }
+
+            // Clona la risposta
+            const responseToCache = response.clone();
+
+            caches.open(CACHE_NAME)
+              .then((cache) => {
+                cache.put(event.request, responseToCache);
+              });
+
+            return response;
+          }
+        );
       })
-  );
+    );
 });
 
-// Aggiornamento cache
 self.addEventListener('activate', (event) => {
   const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
@@ -44,4 +64,3 @@ self.addEventListener('activate', (event) => {
     })
   );
 });
-
