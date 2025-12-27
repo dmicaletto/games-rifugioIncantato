@@ -1,12 +1,16 @@
+/* Aggiungi questa regola in cima per testare */
+body {
+  background-color: red !important;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Impostazioni di base per garantire che l'app occupi tutto lo schermo su mobile */
 html, body, #root {
   height: 100%;
   width: 100%;
   margin: 0;
   padding: 0;
-  overflow: hidden; /* Previene scroll indesiderati */
+  overflow: hidden;
 }
