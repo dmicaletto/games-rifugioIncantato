@@ -1,43 +1,15 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="it">
   <head>
     <meta charset="UTF-8" />
-    <!-- Usa ./ per il favicon -->
-    <link rel="icon" type="image/svg+xml" href="./vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#10b981" />
-    	<!-- META TAG PWA E TEMA -->
-	  <meta name="apple-mobile-web-app-capable" content="yes">
-	  <meta name="apple-mobile-web-app-title" content="Rufugio Incantato">
-	
-    <!-- Link al Manifest per la PWA (percorso relativo) -->
-    <link rel="manifest" href="./manifest.json" />
-    
-    <!-- TAILWIND CSS (Via CDN per evitare configurazioni complesse) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <title>Rufugio Incantato</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Il Rifugio Incantato</title>
+    <!-- Il percorso qui deve includere il nome della repo -->
+    <link rel="manifest" href="/games-rifugioIncantato/manifest.json">
+    <meta name="theme-color" content="#6366f1">
   </head>
   <body>
     <div id="root"></div>
-    
-    <!-- IMPORTANTE: Usa ./src/... per supportare le sottocartelle di GitHub Pages -->
-    <script type="module" src="./src/main.jsx"></script>
-
-    <!-- Registrazione Service Worker (necessario per installazione su Android) -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          // Usa ./sw.js per cercare il file nella stessa cartella dell'index.html
-          navigator.serviceWorker.register('./sw.js')
-            .then((registration) => {
-              console.log('SW registrato con successo:', registration.scope);
-            })
-            .catch((err) => {
-              console.log('SW fallito:', err);
-            });
-        });
-      }
-    </script>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
