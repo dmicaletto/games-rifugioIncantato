@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
-import './index.css' // Assicurati di avere questo file o rimuovi la riga se usi Tailwind via CDN/config
+
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
