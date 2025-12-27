@@ -1,2 +1,2 @@
-# NutriAI-Pro
-applicazioni web per una guida nutrizionale
+# Rifugio Incantato
+applicazioni web per giochi matematici
