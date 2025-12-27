@@ -1,6 +1,6 @@
 
 // Questo file permette all'app di essere installata e funzionare offline
-const CACHE_NAME = 'nutriai-v1';
+const CACHE_NAME = 'RufugioIncantato-v1';
 const urlsToCache = [
   './',
   './index.html',
