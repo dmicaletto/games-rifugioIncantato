@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Heart, Smile, Star, Utensils, Gamepad2, User, Activity, Sparkles, Zap, Volume2, VolumeX } from 'lucide-react';
+import { Heart, Smile, Star, Utensils, Gamepad2, User, Activity, Sparkles, Zap, Volume2, VolumeX, ShoppingBag, Store } from 'lucide-react';
 
 // --- CONFIGURAZIONE SISTEMA ---
 const USE_REAL_AI = false; 
 const GOOGLE_API_KEY = ""; 
 const REPO_BASE = '/games-rifugioIncantato';
 
-// --- DATABASE OGGETTI ---
+// --- DATABASE OGGETTI GIOCO (Cibo e Cure) ---
 const FOOD_ITEMS = [
   { name: "Mela Rossa", emoji: "🍎", value: 15, msg: "Una mela al giorno..." },
   { name: "Hamburger", emoji: "🍔", value: 35, msg: "Che abbuffata!" },
@@ -28,6 +28,22 @@ const MEDICINES = [
   { name: "Cerotto", emoji: "🩹" },
   { name: "Pillola Magica", emoji: "💊" },
 ];
+
+// --- DATABASE NEGOZIO (Arredi e Giochi acquistabili) ---
+const MARKET_ITEMS = {
+  decor: [
+    { id: 'rug_rainbow', name: "Tappeto Arcobaleno", emoji: "🌈", price: 50, type: 'rug', style: { bottom: '-20px', fontSize: '100px', opacity: 0.8, zIndex: 0 } },
+    { id: 'plant_potted', name: "Pianta Felice", emoji: "🪴", price: 30, type: 'plant', style: { left: '10px', bottom: '20px', fontSize: '60px', zIndex: 5 } },
+    { id: 'lamp_star', name: "Lampada Stella", emoji: "🌟", price: 80, type: 'lamp', style: { right: '20px', top: '100px', fontSize: '50px', zIndex: 5 } },
+    { id: 'bed_cloud', name: "Letto Nuvola", emoji: "☁️", price: 150, type: 'bed', style: { right: '-20px', bottom: '10px', fontSize: '90px', zIndex: 1 } },
+    { id: 'pic_frame', name: "Quadro", emoji: "🖼️", price: 40, type: 'wall', style: { left: '40px', top: '50px', fontSize: '60px', zIndex: 0 } }
+  ],
+  toys: [
+    { id: 'robot', name: "Robot", emoji: "🤖", price: 60, type: 'toy' },
+    { id: 'bear', name: "Orsacchiotto", emoji: "🧸", price: 45, type: 'toy' },
+    { id: 'car', name: "Macchinina", emoji: "🏎️", price: 55, type: 'toy' }
+  ]
+};
 
 // --- MOTORE AI (GEMINI SIMULATO) ---
 class GeminiTutor {
@@ -68,7 +84,9 @@ const INITIAL_GAME_STATE = {
     lastLogin: new Date().toISOString()
   },
   wallet: { stars: 50 },
-  difficulty: { mathLevel: 1, streak: 0 }
+  difficulty: { mathLevel: 1, streak: 0 },
+  inventory: [], // IDs degli oggetti posseduti
+  decor: {} // Oggetti attualmente piazzati nella stanza { rug: 'rug_rainbow', ... }
 };
 
 // --- COMPONENTI GRAFICI ---
@@ -119,6 +137,82 @@ const Bubble = ({ text }) => {
       <div className="bg-white text-slate-800 p-4 rounded-2xl rounded-bl-none shadow-2xl border-2 border-indigo-100 animate-bounce-in relative">
         <p className="font-bold text-center text-sm leading-tight">{text}</p>
         <div className="absolute -bottom-3 left-6 w-0 h-0 border-l-[10px] border-l-transparent border-t-[15px] border-t-white border-r-[10px] border-r-transparent filter drop-shadow-sm"></div>
+      </div>
+    </div>
+  );
+};
+
+// --- MODALE NEGOZIO ---
+const ShopModal = ({ isOpen, onClose, wallet, inventory, onBuy }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-3xl w-full max-w-sm max-h-[80vh] flex flex-col shadow-2xl overflow-hidden border-4 border-white">
+        <div className="bg-indigo-100 p-4 flex justify-between items-center border-b border-indigo-200">
+          <h3 className="text-xl font-black text-indigo-900 flex items-center gap-2">
+            <Store size={24} /> Market
+          </h3>
+          <div className="bg-white px-3 py-1 rounded-full flex items-center gap-1 shadow-sm">
+            <Star size={16} className="fill-amber-400 text-amber-500" />
+            <span className="font-bold text-indigo-900">{wallet.stars}</span>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold">X</button>
+        </div>
+
+        <div className="overflow-y-auto p-4 flex-1">
+          <h4 className="font-bold text-slate-500 mb-2 uppercase text-xs tracking-wider">Arredamento</h4>
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            {MARKET_ITEMS.decor.map(item => {
+              const owned = inventory.includes(item.id);
+              return (
+                <div key={item.id} className={`p-3 rounded-xl border-2 flex flex-col items-center text-center transition-all ${owned ? 'bg-green-50 border-green-200' : 'bg-white border-slate-100'}`}>
+                  <div className="text-4xl mb-2">{item.emoji}</div>
+                  <div className="text-sm font-bold text-slate-700 leading-tight mb-2">{item.name}</div>
+                  {owned ? (
+                    <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">Posseduto</span>
+                  ) : (
+                    <button 
+                      onClick={() => onBuy(item)}
+                      disabled={wallet.stars < item.price}
+                      className={`w-full py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1
+                        ${wallet.stars >= item.price ? 'bg-amber-400 text-white shadow-md active:scale-95' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}
+                      `}
+                    >
+                      {item.price} <Star size={12} className="fill-current" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <h4 className="font-bold text-slate-500 mb-2 uppercase text-xs tracking-wider">Giochi</h4>
+          <div className="grid grid-cols-2 gap-3">
+            {MARKET_ITEMS.toys.map(item => {
+              const owned = inventory.includes(item.id);
+              return (
+                <div key={item.id} className={`p-3 rounded-xl border-2 flex flex-col items-center text-center transition-all ${owned ? 'bg-green-50 border-green-200' : 'bg-white border-slate-100'}`}>
+                  <div className="text-4xl mb-2">{item.emoji}</div>
+                  <div className="text-sm font-bold text-slate-700 leading-tight mb-2">{item.name}</div>
+                  {owned ? (
+                    <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">Posseduto</span>
+                  ) : (
+                    <button 
+                      onClick={() => onBuy(item)}
+                      disabled={wallet.stars < item.price}
+                      className={`w-full py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1
+                        ${wallet.stars >= item.price ? 'bg-amber-400 text-white shadow-md active:scale-95' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}
+                      `}
+                    >
+                      {item.price} <Star size={12} className="fill-current" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -227,9 +321,9 @@ const MathModal = ({ isOpen, type, difficultyLevel, rewardItem, onClose, onSucce
 
 export default function App() {
   const [gameState, setGameState] = useState(INITIAL_GAME_STATE);
-  const [activeModal, setActiveModal] = useState(null);
-  const [currentReward, setCurrentReward] = useState(null); // L'oggetto che si sta vincendo
-  const [floatingItem, setFloatingItem] = useState(null); // L'oggetto che vola
+  const [activeModal, setActiveModal] = useState(null); // 'food', 'play', 'heal', 'shop'
+  const [currentReward, setCurrentReward] = useState(null);
+  const [floatingItem, setFloatingItem] = useState(null);
   const [message, setMessage] = useState(null);
   const [petThought, setPetThought] = useState("Ciao! Giochiamo?"); 
   const [isMuted, setIsMuted] = useState(false); 
@@ -256,7 +350,7 @@ export default function App() {
   // Pensieri automatici
   useEffect(() => {
     const thoughtInterval = setInterval(() => {
-      if (activeModal || floatingItem) return; // Zitto se mangia o gioca
+      if (activeModal || floatingItem) return; 
       const { stats, status } = gameState.pet;
       let mood = 'happy';
       if (status === 'sick' || stats.health < 40) mood = 'sick';
@@ -301,10 +395,32 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // --- LOGICA NEGOZIO ---
+  const handleBuy = (item) => {
+    if (gameState.wallet.stars >= item.price) {
+      setGameState(prev => {
+        const newInventory = [...(prev.inventory || []), item.id];
+        const newDecor = { ...(prev.decor || {}) };
+        
+        // Se è arredamento, piazzalo subito!
+        if (item.type !== 'toy') {
+          newDecor[item.type] = item;
+        }
+
+        return {
+          ...prev,
+          wallet: { stars: prev.wallet.stars - item.price },
+          inventory: newInventory,
+          decor: newDecor
+        };
+      });
+      speak("Grazie! Che bel regalo!");
+      setPetThought("Wow! È bellissimo!");
+    }
+  };
+
   // --- LOGICA AZIONI ---
-  
   const startAction = (type) => {
-    // Scegli una ricompensa casuale prima di aprire il modale
     let reward = null;
     if (type === 'food') reward = FOOD_ITEMS[Math.floor(Math.random() * FOOD_ITEMS.length)];
     else if (type === 'play') reward = TOYS[Math.floor(Math.random() * TOYS.length)];
@@ -316,33 +432,20 @@ export default function App() {
 
   const handleSuccess = async (type) => {
     const reward = currentReward;
-    
-    // 1. Avvia Animazione Consegna (Floating Item)
     setFloatingItem(reward);
     setPetThought(type === 'food' ? "Yumm!! 😋" : "Evviva!! 🎉");
     speak(type === 'food' ? "Gnam gnam!" : "Evviva!");
 
-    // 2. Attendi animazione prima di aggiornare stats
     setTimeout(async () => {
-      setFloatingItem(null); // Nascondi oggetto
-      
+      setFloatingItem(null); 
       setGameState(prev => {
         const s = { ...prev.pet.stats };
         let stars = 5;
         let value = reward?.value || 20;
 
-        if (type === 'food') { 
-          s.hunger = Math.min(100, s.hunger + value); 
-          stars = 5; 
-        }
-        if (type === 'play') { 
-          s.happiness = Math.min(100, s.happiness + 25); 
-          stars = 8; 
-        }
-        if (type === 'heal') { 
-          s.health = Math.min(100, s.health + 20); 
-          stars = 15; 
-        }
+        if (type === 'food') { s.hunger = Math.min(100, s.hunger + value); stars = 5; }
+        if (type === 'play') { s.happiness = Math.min(100, s.happiness + 25); stars = 8; }
+        if (type === 'heal') { s.health = Math.min(100, s.health + 20); stars = 15; }
 
         return {
           ...prev,
@@ -352,12 +455,11 @@ export default function App() {
         };
       });
 
-      // Valutazione livello
       const newLevel = await aiTutor.evaluateLevel(gameState.difficulty.mathLevel);
       if (newLevel !== gameState.difficulty.mathLevel) {
         setGameState(prev => ({ ...prev, difficulty: { ...prev.difficulty, mathLevel: newLevel } }));
       }
-    }, 2000); // 2 secondi di animazione "mangia/gioca"
+    }, 2000); 
   };
 
   const recoverPet = () => {
@@ -378,13 +480,25 @@ export default function App() {
   };
 
   // --- RENDER ---
-  const { pet, wallet } = gameState;
+  const { pet, wallet, decor = {} } = gameState;
   const isRunaway = pet.status === 'runaway';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 font-sans text-slate-800 flex flex-col overflow-hidden relative">
-      <div className="absolute top-10 left-10 w-32 h-32 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
-      <div className="absolute bottom-20 right-10 w-64 h-64 bg-yellow-300/20 rounded-full blur-3xl animate-pulse delay-700"></div>
+      
+      {/* SFONDO E DECORAZIONI DELLA STANZA */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {/* Luci di sfondo */}
+        <div className="absolute top-10 left-10 w-32 h-32 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-20 right-10 w-64 h-64 bg-yellow-300/20 rounded-full blur-3xl animate-pulse delay-700"></div>
+        
+        {/* Renderizza Arredi Acquistati */}
+        {!isRunaway && Object.values(decor).map(item => (
+          <div key={item.id} className="absolute transition-all duration-1000" style={item.style}>
+            {item.emoji}
+          </div>
+        ))}
+      </div>
 
       {/* TOP BAR */}
       <div className="px-4 py-4 z-10 flex justify-between items-start">
@@ -418,7 +532,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Floating Item Animation */}
+        {/* Animazione Oggetto Volante */}
         {floatingItem && (
           <div className="absolute z-50 animate-bounce-in flex flex-col items-center justify-center transition-all duration-[2000ms] ease-in-out transform translate-y-20 scale-50 opacity-0"
                style={{ animation: 'bounce-in 0.5s forwards, fade-out 0.5s 1.5s forwards' }}>
@@ -440,6 +554,7 @@ export default function App() {
              <div className="text-[160px] leading-none select-none animate-[bounce_3s_infinite]">
                {isRunaway ? "💨" : pet.status === 'sick' ? "🤒" : pet.stats.happiness > 80 ? "🦊" : "😿"}
              </div>
+             {/* Ombra semplice */}
              <div className="w-32 h-4 bg-black/20 rounded-[100%] mx-auto mt-2 blur-sm"></div>
           </div>
         </div>
@@ -457,12 +572,24 @@ export default function App() {
         )}
       </div>
 
-      {/* PANNELLO CONTROLLI */}
+      {/* PANNELLO CONTROLLI & SHOP */}
       {!isRunaway && (
         <div className="absolute bottom-0 w-full z-20">
           <div className="h-12 bg-gradient-to-t from-white/20 to-transparent w-full absolute -top-12 pointer-events-none"></div>
           
           <GlassCard className="rounded-b-none rounded-t-[2.5rem] p-6 pb-8 border-b-0 backdrop-blur-2xl bg-white/40 shadow-[0_-10px_40px_rgba(0,0,0,0.2)]">
+            
+            {/* Pulsante Market flottante sopra */}
+            <div className="absolute -top-8 right-8">
+              <button 
+                onClick={() => setActiveModal('shop')}
+                className="bg-white p-3 rounded-full shadow-xl border-4 border-amber-300 text-indigo-600 hover:scale-110 transition-transform active:scale-95 flex flex-col items-center"
+              >
+                <ShoppingBag size={24} />
+                <span className="text-[10px] font-bold uppercase mt-1">Market</span>
+              </button>
+            </div>
+
             <div className="grid grid-cols-3 gap-4 mb-6 px-2">
               <StatBar value={pet.stats.health} color="bg-rose-500" icon={Heart} label="Vita" />
               <StatBar value={pet.stats.hunger} color="bg-amber-500" icon={Utensils} label="Cibo" />
@@ -497,13 +624,22 @@ export default function App() {
         </div>
       )}
 
+      {/* Modali */}
       <MathModal 
-        isOpen={!!activeModal} 
+        isOpen={['food', 'play', 'heal'].includes(activeModal)}
         type={activeModal}
         difficultyLevel={gameState.difficulty.mathLevel}
         rewardItem={currentReward}
         onClose={() => setActiveModal(null)}
         onSuccess={handleSuccess}
+      />
+
+      <ShopModal 
+        isOpen={activeModal === 'shop'}
+        onClose={() => setActiveModal(null)}
+        wallet={gameState.wallet}
+        inventory={gameState.inventory || []}
+        onBuy={handleBuy}
       />
     </div>
   );
