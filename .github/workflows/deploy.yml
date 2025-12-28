@@ -2,15 +2,13 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ "main" ] # Assicurati che il tuo branch principale si chiami 'main' o 'master'
+    branches: [ "main" ]
 
-# Permessi necessari per il deploy
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Permette un solo deploy alla volta
 concurrency:
   group: "pages"
   cancel-in-progress: true
@@ -26,8 +24,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-
+          # Ho rimosso la riga "cache: 'npm'" che causava l'errore se manca package-lock.json
+          
       - name: Install dependencies
         run: npm install
 
@@ -37,7 +35,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist # Pubblica solo la cartella costruita
+          path: ./dist
 
   deploy:
     environment:
