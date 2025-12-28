@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Heart, Smile, Star, Utensils, Gamepad2, User, Activity, Sparkles, AlertCircle, Zap, Volume2, VolumeX } from 'lucide-react';
+import { Heart, Smile, Star, Utensils, Gamepad2, User, Activity, Sparkles, Zap, Volume2, VolumeX } from 'lucide-react';
 
 // --- CONFIGURAZIONE SISTEMA ---
 const USE_REAL_AI = false; 
 const GOOGLE_API_KEY = ""; 
+// Configurazione per GitHub Pages: nome della repo per i percorsi
+const REPO_BASE = '/games-rifugioIncantato';
 
-// --- MOTORE AI (GEMINI) ---
+// --- MOTORE AI (GEMINI SIMULATO) ---
 class GeminiTutor {
   constructor() {
     this.history = []; 
@@ -57,7 +59,7 @@ const INITIAL_GAME_STATE = {
   difficulty: { mathLevel: 1, streak: 0 }
 };
 
-// --- COMPONENTI GRAFICI AVANZATI ---
+// --- COMPONENTI GRAFICI ---
 
 const GlassCard = ({ children, className = "" }) => (
   <div className={`bg-white/30 backdrop-blur-xl border border-white/50 shadow-xl rounded-3xl ${className}`}>
@@ -181,20 +183,20 @@ const MathModal = ({ isOpen, type, difficultyLevel, onClose, onSuccess }) => {
           </span>
         </div>
 
-        <div className="flex gap-3 mb-6">
+        <div className="flex gap-2 sm:gap-3 mb-6">
           <input
             ref={inputRef}
             type="tel"
             value={answer}
             onChange={(e) => setAnswer(e.target.value)}
-            className="flex-1 text-center text-4xl font-black py-4 rounded-2xl border-4 border-indigo-100 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 outline-none text-indigo-900 placeholder-indigo-200 transition-all bg-white shadow-sm"
+            className="flex-1 min-w-0 text-center text-3xl sm:text-4xl font-black py-3 sm:py-4 rounded-2xl border-4 border-indigo-100 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 outline-none text-indigo-900 placeholder-indigo-200 transition-all bg-white shadow-sm"
             placeholder="?"
           />
           <button 
             onClick={checkAnswer}
-            className="bg-gradient-to-b from-green-400 to-green-600 text-white rounded-2xl px-6 flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+            className="bg-gradient-to-b from-green-400 to-green-600 text-white rounded-2xl px-4 sm:px-6 flex items-center justify-center shadow-lg active:scale-95 transition-transform shrink-0"
           >
-            <Zap size={32} fill="white" />
+            <Zap size={28} className="sm:w-8 sm:h-8" fill="white" />
           </button>
         </div>
       </div>
@@ -209,35 +211,41 @@ export default function App() {
   const [activeModal, setActiveModal] = useState(null);
   const [message, setMessage] = useState(null);
   const [petThought, setPetThought] = useState("Ciao! Giochiamo?"); 
-  const [isMuted, setIsMuted] = useState(false); // Stato Audio
+  const [isMuted, setIsMuted] = useState(false); 
   
-  // --- FUNZIONE PARLATA (TTS) ---
+  // --- REGISTRAZIONE SERVICE WORKER (Integrata qui per sicurezza) ---
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      // Nota: usiamo il path relativo al repo GitHub per far funzionare la PWA
+      const swPath = `${REPO_BASE}/sw.js`;
+      
+      navigator.serviceWorker.register(swPath)
+        .then(registration => {
+          console.log('SW registrato per:', REPO_BASE, registration.scope);
+        })
+        .catch(error => {
+          // Logga errore ma non bloccare l'app
+          console.log('SW registrazione fallita (normale in preview senza sw.js reale):', error);
+        });
+    }
+  }, []);
+
+  // --- TTS & CHATTERBOX ---
   const speak = useCallback((text) => {
     if (isMuted || !text || typeof window === 'undefined') return;
-    
-    // Ferma eventuali frasi precedenti
     window.speechSynthesis.cancel();
-
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'it-IT';
-    utterance.pitch = 1.4; // Voce acuta (più "piccola/carina")
-    utterance.rate = 1.1;  // Leggermente più veloce
-    
-    // Tenta di usare il motore Google se disponibile (spesso migliore su Android)
-    const voices = window.speechSynthesis.getVoices();
-    // Non forziamo troppo per evitare errori, il default va bene
-    
+    utterance.pitch = 1.4; 
+    utterance.rate = 1.1;  
     window.speechSynthesis.speak(utterance);
   }, [isMuted]);
 
-  // --- LOGICA DEL PENSIERO (Chatterbox + Voce) ---
   useEffect(() => {
     const thoughtInterval = setInterval(() => {
       if (activeModal) return;
-
       const { stats, status } = gameState.pet;
       let mood = 'happy';
-
       if (status === 'sick' || stats.health < 40) mood = 'sick';
       else if (stats.hunger < 40) mood = 'hungry';
       else if (stats.happiness < 40) mood = 'bored';
@@ -245,13 +253,10 @@ export default function App() {
 
       const phrases = PET_PHRASES[mood];
       const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
-      
       setPetThought(randomPhrase);
-      speak(randomPhrase); // <-- Parla qui
-
+      speak(randomPhrase); 
       setTimeout(() => setPetThought(null), 5000);
     }, 12000); 
-
     return () => clearInterval(thoughtInterval);
   }, [gameState.pet, activeModal, speak]);
 
@@ -312,11 +317,7 @@ export default function App() {
       if (type === 'food') { s.hunger = Math.min(100, s.hunger + 30); stars = 5; thought = "Gnam gnam! Delizioso! 😋"; }
       if (type === 'play') { s.happiness = Math.min(100, s.happiness + 25); stars = 8; thought = "Che divertimento!! 🎉"; }
       if (type === 'heal') { s.health = Math.min(100, s.health + 20); stars = 15; thought = "Mi sento fortissimo! 💪"; }
-
       setPetThought(thought);
-      // Non chiamiamo speak() qui direttamente perché lo faremo nel useEffect o subito sotto, 
-      // ma setState è asincrono. Meglio chiamarlo direttamente.
-      
       return {
         ...prev,
         wallet: { stars: prev.wallet.stars + stars },
@@ -325,8 +326,7 @@ export default function App() {
       };
     });
     
-    speak(thought); // <-- Parla dopo azione corretta
-
+    speak(thought); 
     const newLevel = await aiTutor.evaluateLevel(gameState.difficulty.mathLevel);
     if (newLevel !== gameState.difficulty.mathLevel) {
       setGameState(prev => ({ ...prev, difficulty: { ...prev.difficulty, mathLevel: newLevel } }));
@@ -356,7 +356,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 font-sans text-slate-800 flex flex-col overflow-hidden relative">
-      
       <div className="absolute top-10 left-10 w-32 h-32 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
       <div className="absolute bottom-20 right-10 w-64 h-64 bg-yellow-300/20 rounded-full blur-3xl animate-pulse delay-700"></div>
 
@@ -373,7 +372,6 @@ export default function App() {
         </GlassCard>
 
         <div className="flex gap-2">
-          {/* Tasto Mute */}
           <button 
             onClick={() => setIsMuted(!isMuted)} 
             className="p-3 rounded-full bg-white/20 backdrop-blur border border-white/30 shadow-lg text-white hover:bg-white/30 transition active:scale-95"
@@ -390,7 +388,6 @@ export default function App() {
 
       {/* AREA CENTRALE PET */}
       <div className="flex-1 relative flex flex-col items-center justify-center pb-20">
-        
         {message && (
           <div className="absolute top-0 z-50 bg-white/90 backdrop-blur text-indigo-900 px-6 py-3 rounded-full shadow-xl font-bold animate-bounce border-2 border-white">
             {message}
@@ -398,7 +395,6 @@ export default function App() {
         )}
 
         <div className="relative w-full flex justify-center">
-          
           {!isRunaway && <Bubble text={petThought} />}
 
           <div 
@@ -432,13 +428,12 @@ export default function App() {
         )}
       </div>
 
-      {/* PANNELLO CONTROLLI INFERIORE */}
+      {/* PANNELLO CONTROLLI */}
       {!isRunaway && (
         <div className="absolute bottom-0 w-full z-20">
           <div className="h-12 bg-gradient-to-t from-white/20 to-transparent w-full absolute -top-12 pointer-events-none"></div>
           
           <GlassCard className="rounded-b-none rounded-t-[2.5rem] p-6 pb-8 border-b-0 backdrop-blur-2xl bg-white/40 shadow-[0_-10px_40px_rgba(0,0,0,0.2)]">
-            
             <div className="grid grid-cols-3 gap-4 mb-6 px-2">
               <StatBar value={pet.stats.health} color="bg-rose-500" icon={Heart} label="Vita" />
               <StatBar value={pet.stats.hunger} color="bg-amber-500" icon={Utensils} label="Cibo" />
