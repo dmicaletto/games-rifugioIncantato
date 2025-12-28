@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Heart, Smile, Star, Utensils, Gamepad2, User, Activity, Sparkles, Zap, Volume2, VolumeX, ShoppingBag, Store, Coins, TrendingUp } from 'lucide-react';
+import { Heart, Smile, Star, Utensils, Gamepad2, User, Activity, Sparkles, Zap, Volume2, VolumeX, ShoppingBag, Store, Coins, TrendingUp, Download } from 'lucide-react';
 
 // --- CONFIGURAZIONE SISTEMA ---
 const USE_REAL_AI = false; 
@@ -356,14 +356,33 @@ export default function App() {
   const [message, setMessage] = useState(null);
   const [petThought, setPetThought] = useState("Ciao! Giochiamo?"); 
   const [isMuted, setIsMuted] = useState(false); 
+  const [deferredPrompt, setDeferredPrompt] = useState(null); // Per l'installazione PWA
   
-  // --- REGISTRAZIONE SERVICE WORKER ---
+  // --- GESTIONE INSTALLAZIONE PWA ---
   useEffect(() => {
+    // 1. Registra SW
     if ('serviceWorker' in navigator) {
       const swPath = `${REPO_BASE}/sw.js`;
       navigator.serviceWorker.register(swPath).catch(e => console.log(e));
     }
+
+    // 2. Cattura evento installazione
+    const handler = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
 
   // --- TTS ---
   const speak = useCallback((text) => {
@@ -597,6 +616,16 @@ export default function App() {
         </GlassCard>
 
         <div className="flex gap-2">
+          {/* Tasto INSTALLA APP (appare solo se disponibile) */}
+          {deferredPrompt && (
+            <button 
+              onClick={handleInstallClick} 
+              className="p-3 rounded-full bg-indigo-600 text-white shadow-lg animate-pulse active:scale-95"
+            >
+              <Download size={20} />
+            </button>
+          )}
+
           <button onClick={() => setIsMuted(!isMuted)} className="p-3 rounded-full bg-white/20 backdrop-blur border border-white/30 shadow-lg text-white hover:bg-white/30 transition active:scale-95">
             {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
           </button>
