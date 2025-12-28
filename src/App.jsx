@@ -1,20 +1,21 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Heart, Smile, Star, Utensils, Gamepad2, User, Activity, Sparkles, Zap, Volume2, VolumeX, ShoppingBag, Store } from 'lucide-react';
+import { createRoot } from 'react-dom/client';
+import { Heart, Smile, Star, Utensils, Gamepad2, User, Activity, Sparkles, Zap, Volume2, VolumeX, ShoppingBag, Store, Coins, TrendingUp } from 'lucide-react';
 
 // --- CONFIGURAZIONE SISTEMA ---
 const USE_REAL_AI = false; 
 const GOOGLE_API_KEY = ""; 
 const REPO_BASE = '/games-rifugioIncantato';
 
-// --- DATABASE OGGETTI GIOCO (Cibo e Cure) ---
+// --- DATABASE OGGETTI GIOCO ---
 const FOOD_ITEMS = [
-  { name: "Mela Rossa", emoji: "🍎", value: 15, msg: "Una mela al giorno..." },
-  { name: "Hamburger", emoji: "🍔", value: 35, msg: "Che abbuffata!" },
-  { name: "Pizza", emoji: "🍕", value: 30, msg: "Mamma mia che buona!" },
-  { name: "Gelato", emoji: "🍦", value: 20, msg: "Brrr... che freddo!" },
-  { name: "Carota", emoji: "🥕", value: 10, msg: "Fa bene alla vista!" },
-  { name: "Sushi", emoji: "🍣", value: 25, msg: "Molto raffinato!" },
-  { name: "Ciambella", emoji: "🍩", value: 15, msg: "Gnam gnam!" },
+  { name: "Mela Rossa", emoji: "🍎", value: 15 },
+  { name: "Hamburger", emoji: "🍔", value: 35 },
+  { name: "Pizza", emoji: "🍕", value: 30 },
+  { name: "Gelato", emoji: "🍦", value: 20 },
+  { name: "Carota", emoji: "🥕", value: 10 },
+  { name: "Sushi", emoji: "🍣", value: 25 },
+  { name: "Ciambella", emoji: "🍩", value: 15 },
 ];
 
 const TOYS = [
@@ -29,23 +30,23 @@ const MEDICINES = [
   { name: "Pillola Magica", emoji: "💊" },
 ];
 
-// --- DATABASE NEGOZIO (Arredi e Giochi acquistabili) ---
+// --- DATABASE NEGOZIO (Prezzi in Monete) ---
 const MARKET_ITEMS = {
   decor: [
-    { id: 'rug_rainbow', name: "Tappeto Arcobaleno", emoji: "🌈", price: 50, type: 'rug', style: { bottom: '-20px', fontSize: '100px', opacity: 0.8, zIndex: 0 } },
-    { id: 'plant_potted', name: "Pianta Felice", emoji: "🪴", price: 30, type: 'plant', style: { left: '10px', bottom: '20px', fontSize: '60px', zIndex: 5 } },
-    { id: 'lamp_star', name: "Lampada Stella", emoji: "🌟", price: 80, type: 'lamp', style: { right: '20px', top: '100px', fontSize: '50px', zIndex: 5 } },
-    { id: 'bed_cloud', name: "Letto Nuvola", emoji: "☁️", price: 150, type: 'bed', style: { right: '-20px', bottom: '10px', fontSize: '90px', zIndex: 1 } },
-    { id: 'pic_frame', name: "Quadro", emoji: "🖼️", price: 40, type: 'wall', style: { left: '40px', top: '50px', fontSize: '60px', zIndex: 0 } }
+    { id: 'rug_rainbow', name: "Tappeto Arcobaleno", emoji: "🌈", price: 150, type: 'rug', style: { bottom: '-20px', left: '50%', transform: 'translateX(-50%)', fontSize: '120px', opacity: 0.9, zIndex: 0 } },
+    { id: 'plant_potted', name: "Pianta Felice", emoji: "🪴", price: 80, type: 'plant', style: { left: '10px', bottom: '100px', fontSize: '70px', zIndex: 5 } },
+    { id: 'lamp_star', name: "Lampada Stella", emoji: "🌟", price: 120, type: 'lamp', style: { right: '20px', top: '100px', fontSize: '50px', zIndex: 5 } },
+    { id: 'bed_cloud', name: "Letto Nuvola", emoji: "☁️", price: 300, type: 'bed', style: { right: '-20px', bottom: '10px', fontSize: '100px', zIndex: 1 } },
+    { id: 'pic_frame', name: "Quadro", emoji: "🖼️", price: 90, type: 'wall', style: { left: '40px', top: '50px', fontSize: '60px', zIndex: 0 } }
   ],
   toys: [
-    { id: 'robot', name: "Robot", emoji: "🤖", price: 60, type: 'toy' },
-    { id: 'bear', name: "Orsacchiotto", emoji: "🧸", price: 45, type: 'toy' },
-    { id: 'car', name: "Macchinina", emoji: "🏎️", price: 55, type: 'toy' }
+    { id: 'robot', name: "Robot", emoji: "🤖", price: 100, type: 'toy', style: { left: '80px', bottom: '30px', fontSize: '55px', zIndex: 6 } },
+    { id: 'bear', name: "Orsacchiotto", emoji: "🧸", price: 75, type: 'toy', style: { right: '90px', bottom: '40px', fontSize: '55px', zIndex: 6 } },
+    { id: 'car', name: "Macchinina", emoji: "🏎️", price: 85, type: 'toy', style: { left: '50%', bottom: '20px', fontSize: '50px', zIndex: 6 } }
   ]
 };
 
-// --- MOTORE AI (GEMINI SIMULATO) ---
+// --- MOTORE AI (SIMULATO) ---
 class GeminiTutor {
   constructor() { this.history = []; }
   recordAnswer(type, problem, isCorrect, timeTaken) {
@@ -63,19 +64,25 @@ class GeminiTutor {
 }
 const aiTutor = new GeminiTutor();
 
-// --- LISTA FRASI DEL PET ---
+// --- FRASI PET ---
 const PET_PHRASES = {
-  hungry: ["Il mio pancino brontola... 🍎", "Ho una fame da lupo!", "Sento profumo di biscotti?", "Possiamo mangiare? 🥺"],
-  bored: ["Che noia...", "Contiamo le nuvole?", "Voglio fare una magia!", "Giochiamo a qualcosa?"],
-  sick: ["Mi gira la testa... 🤒", "Non mi sento molto bene...", "Ho bisogno di una medicina...", "Abbracciami..."],
-  happy: ["Sei la migliore maga del mondo! ✨", "Ti voglio bene!", "Che bella giornata!", "Yuppii!!"],
-  sleepy: ["Che sonno...", "Zzz...", "Voglio la mia copertina..."],
-  intro: ["Ciao! Sono pronto a giocare!", "Bentornata a casa!"]
+  hungry: ["Pancino vuoto... 🍎", "Ho fame!", "Cibo? 🥺"],
+  bored: ["Che noia...", "Giochiamo?", "Uffa..."],
+  sick: ["Non sto bene... 🤒", "Aiuto...", "Gulp..."],
+  happy: ["Sei mitica! ✨", "Ti voglio bene!", "Evviva!"],
+  sleepy: ["Zzz...", "Nanna..."],
+  intro: ["Ciao!", "Eccomi!"]
 };
 
 // --- STATI INIZIALI ---
 const INITIAL_GAME_STATE = {
-  user: { name: "Piccola Maga", level: 1 },
+  user: { name: "Piccola Maga" },
+  // NUOVO SISTEMA LIVELLI
+  levelSystem: {
+    level: 1,
+    currentStars: 0,
+    nextLevelStars: 50 // XP necessaria per il primo livello
+  },
   pet: {
     name: "Batuffolo",
     type: "fox", 
@@ -83,13 +90,16 @@ const INITIAL_GAME_STATE = {
     status: "normal",
     lastLogin: new Date().toISOString()
   },
-  wallet: { stars: 50 },
+  wallet: { 
+    money: 50 // Soldi iniziali
+  },
   difficulty: { mathLevel: 1, streak: 0 },
-  inventory: [], // IDs degli oggetti posseduti
-  decor: {} // Oggetti attualmente piazzati nella stanza { rug: 'rug_rainbow', ... }
+  inventory: [], 
+  decor: {} 
 };
 
-// --- COMPONENTI GRAFICI ---
+// --- COMPONENTI UI ---
+
 const GlassCard = ({ children, className = "" }) => (
   <div className={`bg-white/30 backdrop-blur-xl border border-white/50 shadow-xl rounded-3xl ${className}`}>
     {children}
@@ -108,6 +118,22 @@ const StatBar = ({ value, max = 100, color, icon: Icon, label }) => (
       >
         <div className="absolute top-0 left-0 w-full h-1/2 bg-white/30"></div>
       </div>
+    </div>
+  </div>
+);
+
+// Barra Progresso Livello (Sottile)
+const LevelBar = ({ current, max }) => (
+  <div className="w-full mt-1">
+    <div className="flex justify-between text-[10px] font-bold text-indigo-700 mb-0.5">
+      <span className="flex items-center gap-1"><Star size={10} className="fill-amber-400 text-amber-400"/> XP</span>
+      <span>{current}/{max}</span>
+    </div>
+    <div className="h-2 w-full bg-indigo-100 rounded-full overflow-hidden border border-indigo-200">
+      <div 
+        className="h-full bg-amber-400 rounded-full transition-all duration-500"
+        style={{ width: `${Math.min(100, (current / max) * 100)}%` }}
+      />
     </div>
   </div>
 );
@@ -153,9 +179,9 @@ const ShopModal = ({ isOpen, onClose, wallet, inventory, onBuy }) => {
           <h3 className="text-xl font-black text-indigo-900 flex items-center gap-2">
             <Store size={24} /> Market
           </h3>
-          <div className="bg-white px-3 py-1 rounded-full flex items-center gap-1 shadow-sm">
-            <Star size={16} className="fill-amber-400 text-amber-500" />
-            <span className="font-bold text-indigo-900">{wallet.stars}</span>
+          <div className="bg-white px-3 py-1 rounded-full flex items-center gap-1 shadow-sm border border-emerald-200">
+            <Coins size={16} className="fill-emerald-400 text-emerald-600" />
+            <span className="font-bold text-emerald-800">{Math.floor(wallet.money)}</span>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold">X</button>
         </div>
@@ -174,12 +200,12 @@ const ShopModal = ({ isOpen, onClose, wallet, inventory, onBuy }) => {
                   ) : (
                     <button 
                       onClick={() => onBuy(item)}
-                      disabled={wallet.stars < item.price}
+                      disabled={wallet.money < item.price}
                       className={`w-full py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1
-                        ${wallet.stars >= item.price ? 'bg-amber-400 text-white shadow-md active:scale-95' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}
+                        ${wallet.money >= item.price ? 'bg-emerald-500 text-white shadow-md active:scale-95' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}
                       `}
                     >
-                      {item.price} <Star size={12} className="fill-current" />
+                      {item.price} <Coins size={12} className="fill-current" />
                     </button>
                   )}
                 </div>
@@ -200,12 +226,12 @@ const ShopModal = ({ isOpen, onClose, wallet, inventory, onBuy }) => {
                   ) : (
                     <button 
                       onClick={() => onBuy(item)}
-                      disabled={wallet.stars < item.price}
+                      disabled={wallet.money < item.price}
                       className={`w-full py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1
-                        ${wallet.stars >= item.price ? 'bg-amber-400 text-white shadow-md active:scale-95' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}
+                        ${wallet.money >= item.price ? 'bg-emerald-500 text-white shadow-md active:scale-95' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}
                       `}
                     >
-                      {item.price} <Star size={12} className="fill-current" />
+                      {item.price} <Coins size={12} className="fill-current" />
                     </button>
                   )}
                 </div>
@@ -218,7 +244,7 @@ const ShopModal = ({ isOpen, onClose, wallet, inventory, onBuy }) => {
   );
 };
 
-// --- MODALE MATEMATICA CON RICOMPENSA VISIBILE ---
+// --- MODALE MATEMATICA ---
 const MathModal = ({ isOpen, type, difficultyLevel, rewardItem, onClose, onSuccess }) => {
   const [problem, setProblem] = useState(null);
   const [answer, setAnswer] = useState("");
@@ -255,6 +281,8 @@ const MathModal = ({ isOpen, type, difficultyLevel, rewardItem, onClose, onSucce
   const checkAnswer = async () => {
     if (!answer) return;
     const val = parseInt(answer);
+    
+    // Calcolo tempo per bonus velocità
     const timeTaken = (Date.now() - startTime.current) / 1000;
     const isCorrect = val === problem.result;
 
@@ -262,7 +290,7 @@ const MathModal = ({ isOpen, type, difficultyLevel, rewardItem, onClose, onSucce
 
     if (isCorrect) {
       setFeedback('correct');
-      setTimeout(() => { onSuccess(type); onClose(); }, 800);
+      setTimeout(() => { onSuccess(type, timeTaken); onClose(); }, 800); // Passa il tempo
     } else {
       setFeedback('wrong');
       setAnswer(""); 
@@ -277,15 +305,19 @@ const MathModal = ({ isOpen, type, difficultyLevel, rewardItem, onClose, onSucce
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className={`bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl transform transition-all ${feedback === 'wrong' ? 'animate-shake border-4 border-red-300' : 'border-4 border-white'}`}>
         
-        {/* HEADER CON RICOMPENSA */}
         <div className="text-center mb-6">
           <h3 className="text-xl font-bold text-indigo-900 mb-1">
             {type === 'heal' ? '🚑 CURA' : type === 'food' ? '🍎 CUCINA' : '✨ GIOCA'}
           </h3>
-          <div className="flex items-center justify-center gap-2 bg-indigo-50 py-2 px-4 rounded-xl border border-indigo-100 mt-2">
-            <span className="text-indigo-400 font-bold text-xs uppercase">Vinci:</span>
-            <span className="text-2xl">{rewardItem?.emoji || '⭐'}</span>
-            <span className="text-indigo-800 font-bold">{rewardItem?.name || 'Punti'}</span>
+          <div className="flex flex-col items-center gap-1 mt-2">
+            <div className="flex items-center gap-2 bg-indigo-50 py-1 px-3 rounded-lg border border-indigo-100">
+              <span className="text-xs font-bold text-indigo-400 uppercase">Vinci:</span>
+              <span className="text-lg">{rewardItem?.emoji}</span>
+              <span className="text-sm font-bold text-indigo-800">{rewardItem?.name}</span>
+            </div>
+            <div className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded">
+              ⚡ Rispondi veloce per bonus Soldi!
+            </div>
           </div>
         </div>
 
@@ -305,10 +337,7 @@ const MathModal = ({ isOpen, type, difficultyLevel, rewardItem, onClose, onSucce
             className="flex-1 min-w-0 text-center text-3xl sm:text-4xl font-black py-3 sm:py-4 rounded-2xl border-4 border-indigo-100 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 outline-none text-indigo-900 placeholder-indigo-200 transition-all bg-white shadow-sm"
             placeholder="?"
           />
-          <button 
-            onClick={checkAnswer}
-            className="bg-gradient-to-b from-green-400 to-green-600 text-white rounded-2xl px-4 sm:px-6 flex items-center justify-center shadow-lg active:scale-95 transition-transform shrink-0"
-          >
+          <button onClick={checkAnswer} className="bg-gradient-to-b from-green-400 to-green-600 text-white rounded-2xl px-4 sm:px-6 flex items-center justify-center shadow-lg active:scale-95 transition-transform shrink-0">
             <Zap size={28} className="sm:w-8 sm:h-8" fill="white" />
           </button>
         </div>
@@ -321,7 +350,7 @@ const MathModal = ({ isOpen, type, difficultyLevel, rewardItem, onClose, onSucce
 
 export default function App() {
   const [gameState, setGameState] = useState(INITIAL_GAME_STATE);
-  const [activeModal, setActiveModal] = useState(null); // 'food', 'play', 'heal', 'shop'
+  const [activeModal, setActiveModal] = useState(null); 
   const [currentReward, setCurrentReward] = useState(null);
   const [floatingItem, setFloatingItem] = useState(null);
   const [message, setMessage] = useState(null);
@@ -336,7 +365,7 @@ export default function App() {
     }
   }, []);
 
-  // --- TTS & CHATTERBOX ---
+  // --- TTS ---
   const speak = useCallback((text) => {
     if (isMuted || !text || typeof window === 'undefined') return;
     window.speechSynthesis.cancel();
@@ -367,15 +396,32 @@ export default function App() {
     return () => clearInterval(thoughtInterval);
   }, [gameState.pet, activeModal, speak, floatingItem]);
 
-  // Salvataggio
+  // Salvataggio e caricamento
   useEffect(() => {
-    localStorage.setItem('rifugio_v3', JSON.stringify({
+    // Caricamento iniziale
+    const saved = localStorage.getItem('rifugio_v4'); // Aggiornato versione save
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Merge con state iniziale per garantire nuovi campi (levelSystem)
+        setGameState(prev => ({
+          ...INITIAL_GAME_STATE,
+          ...parsed,
+          levelSystem: parsed.levelSystem || INITIAL_GAME_STATE.levelSystem,
+          wallet: { ...INITIAL_GAME_STATE.wallet, ...parsed.wallet }
+        }));
+      } catch (e) { console.error(e); }
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('rifugio_v4', JSON.stringify({
       ...gameState,
       pet: { ...gameState.pet, lastLogin: new Date().toISOString() }
     }));
   }, [gameState]);
 
-  // Loop di gioco
+  // Loop Decadimento
   useEffect(() => {
     const interval = setInterval(() => {
       setGameState(prev => {
@@ -395,31 +441,32 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // --- LOGICA NEGOZIO ---
+  // --- LOGICA DI GIOCO AGGIORNATA ---
+
+  const showToast = (text) => {
+    setMessage(text);
+    setTimeout(() => setMessage(null), 3000);
+  };
+
   const handleBuy = (item) => {
-    if (gameState.wallet.stars >= item.price) {
+    if (gameState.wallet.money >= item.price) {
       setGameState(prev => {
         const newInventory = [...(prev.inventory || []), item.id];
         const newDecor = { ...(prev.decor || {}) };
-        
-        // Se è arredamento, piazzalo subito!
-        if (item.type !== 'toy') {
-          newDecor[item.type] = item;
-        }
+        newDecor[item.type] = item;
 
         return {
           ...prev,
-          wallet: { stars: prev.wallet.stars - item.price },
+          wallet: { money: prev.wallet.money - item.price },
           inventory: newInventory,
           decor: newDecor
         };
       });
-      speak("Grazie! Che bel regalo!");
-      setPetThought("Wow! È bellissimo!");
+      speak("Grazie!");
+      setPetThought("Evviva! Regali!");
     }
   };
 
-  // --- LOGICA AZIONI ---
   const startAction = (type) => {
     let reward = null;
     if (type === 'food') reward = FOOD_ITEMS[Math.floor(Math.random() * FOOD_ITEMS.length)];
@@ -430,26 +477,65 @@ export default function App() {
     setActiveModal(type);
   };
 
-  const handleSuccess = async (type) => {
+  const handleSuccess = async (type, timeTaken) => {
     const reward = currentReward;
     setFloatingItem(reward);
-    setPetThought(type === 'food' ? "Yumm!! 😋" : "Evviva!! 🎉");
-    speak(type === 'food' ? "Gnam gnam!" : "Evviva!");
+    
+    // --- CALCOLO RICOMPENSE ---
+    
+    // 1. Esperienza (Stelle) fissa
+    const xpEarned = 10; 
+    
+    // 2. Soldi (Monete) basati su velocità
+    // Base 5, Bonus massimo 15 se rispondi in < 5 secondi
+    let moneyEarned = 5;
+    let speedBonus = 0;
+    if (timeTaken < 5) speedBonus = 15;
+    else if (timeTaken < 10) speedBonus = 8;
+    else if (timeTaken < 15) speedBonus = 2;
+    moneyEarned += speedBonus;
 
+    const thought = speedBonus > 5 ? "Sei un fulmine! ⚡" : "Brava!";
+    setPetThought(thought);
+    speak(thought);
+
+    // Animazione e Aggiornamento Stato
     setTimeout(async () => {
       setFloatingItem(null); 
+      
       setGameState(prev => {
         const s = { ...prev.pet.stats };
-        let stars = 5;
-        let value = reward?.value || 20;
+        
+        // Effetti oggetto
+        let itemValue = reward?.value || 20;
+        if (type === 'food') s.hunger = Math.min(100, s.hunger + itemValue);
+        if (type === 'play') s.happiness = Math.min(100, s.happiness + 25);
+        if (type === 'heal') s.health = Math.min(100, s.health + 20);
 
-        if (type === 'food') { s.hunger = Math.min(100, s.hunger + value); stars = 5; }
-        if (type === 'play') { s.happiness = Math.min(100, s.happiness + 25); stars = 8; }
-        if (type === 'heal') { s.health = Math.min(100, s.health + 20); stars = 15; }
+        // Aggiornamento Livello (XP)
+        let lvl = { ...prev.levelSystem };
+        lvl.currentStars += xpEarned;
+        
+        let levelUpMsg = null;
+        
+        // Logica Passaggio Livello
+        if (lvl.currentStars >= lvl.nextLevelStars) {
+          lvl.level += 1;
+          lvl.currentStars = lvl.currentStars - lvl.nextLevelStars; // Reset barra con riporto
+          lvl.nextLevelStars = Math.floor(lvl.nextLevelStars * 1.5); // Prossimo livello più difficile
+          
+          // Bonus Level UP (Soldi!)
+          moneyEarned += 50; 
+          levelUpMsg = `LIVELLO ${lvl.level}! +50 Monete! 🎉`;
+        }
+
+        if (levelUpMsg) showToast(levelUpMsg);
+        else if (speedBonus > 0) showToast(`Velocità! +${moneyEarned} Monete 💰`);
 
         return {
           ...prev,
-          wallet: { stars: prev.wallet.stars + stars },
+          wallet: { money: prev.wallet.money + moneyEarned },
+          levelSystem: lvl,
           pet: { ...prev.pet, stats: s },
           difficulty: { ...prev.difficulty, streak: prev.difficulty.streak + 1 }
         };
@@ -463,36 +549,30 @@ export default function App() {
   };
 
   const recoverPet = () => {
-    if (gameState.wallet.stars >= 50) {
+    if (gameState.wallet.money >= 100) {
       setGameState(prev => ({
         ...prev,
-        wallet: { stars: prev.wallet.stars - 50 },
+        wallet: { money: prev.wallet.money - 100 },
         pet: { ...prev.pet, status: 'normal', stats: { health: 50, hunger: 50, happiness: 50 } }
       }));
-      const text = "Sono tornato! Mi sei mancata! ❤️";
-      setPetThought(text);
-      speak(text);
+      setPetThought("Sono tornato!");
+      speak("Eccomi qui!");
     } else {
-      const text = "Servono più stelle... 😢";
-      setPetThought(text);
-      speak(text);
+      showToast("Servono 100 Monete! Studia per guadagnarle!");
     }
   };
 
   // --- RENDER ---
-  const { pet, wallet, decor = {} } = gameState;
+  const { pet, wallet, levelSystem, decor = {} } = gameState;
   const isRunaway = pet.status === 'runaway';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 font-sans text-slate-800 flex flex-col overflow-hidden relative">
       
-      {/* SFONDO E DECORAZIONI DELLA STANZA */}
+      {/* SFONDO E DECORAZIONI */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {/* Luci di sfondo */}
         <div className="absolute top-10 left-10 w-32 h-32 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute bottom-20 right-10 w-64 h-64 bg-yellow-300/20 rounded-full blur-3xl animate-pulse delay-700"></div>
-        
-        {/* Renderizza Arredi Acquistati */}
         {!isRunaway && Object.values(decor).map(item => (
           <div key={item.id} className="absolute transition-all duration-1000" style={item.style}>
             {item.emoji}
@@ -502,13 +582,17 @@ export default function App() {
 
       {/* TOP BAR */}
       <div className="px-4 py-4 z-10 flex justify-between items-start">
-        <GlassCard className="flex items-center gap-3 px-4 py-2 rounded-full !border-white/40">
+        
+        {/* Profilo & Livello */}
+        <GlassCard className="flex items-center gap-3 px-4 py-2 rounded-2xl !border-white/40 min-w-[160px]">
           <div className="bg-indigo-100 p-1.5 rounded-full border border-indigo-200">
             <User size={18} className="text-indigo-600"/>
           </div>
-          <div className="flex flex-col">
+          <div className="flex flex-col w-full">
             <span className="font-bold text-sm text-indigo-900 leading-none">{gameState.user.name}</span>
-            <span className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider">Livello {gameState.difficulty.mathLevel}</span>
+            <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-wider mt-0.5">Livello {levelSystem.level}</span>
+            {/* Barra XP */}
+            <LevelBar current={levelSystem.currentStars} max={levelSystem.nextLevelStars} />
           </div>
         </GlassCard>
 
@@ -517,29 +601,27 @@ export default function App() {
             {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
           </button>
           
-          <GlassCard className="flex items-center gap-2 px-4 py-2 rounded-full !bg-amber-400/80 !border-amber-300 shadow-amber-500/30">
-            <Star size={20} className="text-white fill-white animate-[spin_3s_linear_infinite]"/>
-            <span className="font-black text-white text-lg drop-shadow-sm">{wallet.stars}</span>
+          {/* Portafoglio Monete */}
+          <GlassCard className="flex items-center gap-2 px-4 py-2 rounded-full !bg-emerald-500/20 !border-emerald-300/50 shadow-lg">
+            <Coins size={20} className="text-emerald-300 fill-emerald-400 animate-pulse"/>
+            <span className="font-black text-white text-lg drop-shadow-md">{Math.floor(wallet.money)}</span>
           </GlassCard>
         </div>
       </div>
 
-      {/* AREA CENTRALE PET */}
+      {/* AREA CENTRALE */}
       <div className="flex-1 relative flex flex-col items-center justify-center pb-20">
         {message && (
-          <div className="absolute top-0 z-50 bg-white/90 backdrop-blur text-indigo-900 px-6 py-3 rounded-full shadow-xl font-bold animate-bounce border-2 border-white">
-            {message}
+          <div className="absolute top-0 z-50 bg-white/90 backdrop-blur text-indigo-900 px-6 py-3 rounded-full shadow-xl font-bold animate-bounce border-2 border-white flex items-center gap-2">
+            <Sparkles size={18} className="text-amber-400"/> {message}
           </div>
         )}
 
-        {/* Animazione Oggetto Volante */}
+        {/* Oggetto Volante */}
         {floatingItem && (
           <div className="absolute z-50 animate-bounce-in flex flex-col items-center justify-center transition-all duration-[2000ms] ease-in-out transform translate-y-20 scale-50 opacity-0"
                style={{ animation: 'bounce-in 0.5s forwards, fade-out 0.5s 1.5s forwards' }}>
             <div className="text-[120px] filter drop-shadow-2xl">{floatingItem.emoji}</div>
-            <div className="bg-white/90 px-4 py-1 rounded-full font-bold text-indigo-800 shadow-lg">
-              +{floatingItem.value || 20}
-            </div>
           </div>
         )}
 
@@ -554,7 +636,6 @@ export default function App() {
              <div className="text-[160px] leading-none select-none animate-[bounce_3s_infinite]">
                {isRunaway ? "💨" : pet.status === 'sick' ? "🤒" : pet.stats.happiness > 80 ? "🦊" : "😿"}
              </div>
-             {/* Ombra semplice */}
              <div className="w-32 h-4 bg-black/20 rounded-[100%] mx-auto mt-2 blur-sm"></div>
           </div>
         </div>
@@ -563,27 +644,26 @@ export default function App() {
           <div className="mt-8 text-center px-8 w-full max-w-sm">
             <GlassCard className="p-6 text-center">
               <h3 className="text-xl font-bold text-indigo-900 mb-2">Oh no! Batuffolo è andato via!</h3>
-              <p className="text-indigo-700 mb-6 text-sm">Era troppo triste o affamato. Vuoi provare a chiamarlo?</p>
-              <button onClick={recoverPet} className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2">
-                <Star size={18} className="fill-white" /> Richiama (50)
+              <p className="text-indigo-700 mb-6 text-sm">Era troppo triste o affamato.</p>
+              <button onClick={recoverPet} className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 mt-4">
+                <Coins size={18} className="fill-white" /> Richiama (100)
               </button>
             </GlassCard>
           </div>
         )}
       </div>
 
-      {/* PANNELLO CONTROLLI & SHOP */}
+      {/* CONTROLLI */}
       {!isRunaway && (
         <div className="absolute bottom-0 w-full z-20">
           <div className="h-12 bg-gradient-to-t from-white/20 to-transparent w-full absolute -top-12 pointer-events-none"></div>
           
           <GlassCard className="rounded-b-none rounded-t-[2.5rem] p-6 pb-8 border-b-0 backdrop-blur-2xl bg-white/40 shadow-[0_-10px_40px_rgba(0,0,0,0.2)]">
             
-            {/* Pulsante Market flottante sopra */}
             <div className="absolute -top-8 right-8">
               <button 
                 onClick={() => setActiveModal('shop')}
-                className="bg-white p-3 rounded-full shadow-xl border-4 border-amber-300 text-indigo-600 hover:scale-110 transition-transform active:scale-95 flex flex-col items-center"
+                className="bg-white p-3 rounded-full shadow-xl border-4 border-emerald-300 text-emerald-600 hover:scale-110 transition-transform active:scale-95 flex flex-col items-center"
               >
                 <ShoppingBag size={24} />
                 <span className="text-[10px] font-bold uppercase mt-1">Market</span>
@@ -624,7 +704,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Modali */}
+      {/* MODALI */}
       <MathModal 
         isOpen={['food', 'play', 'heal'].includes(activeModal)}
         type={activeModal}
