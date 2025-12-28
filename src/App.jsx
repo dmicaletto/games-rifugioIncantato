@@ -4,35 +4,47 @@ import { Heart, Smile, Star, Utensils, Gamepad2, User, Activity, Sparkles, Zap, 
 // --- CONFIGURAZIONE SISTEMA ---
 const USE_REAL_AI = false; 
 const GOOGLE_API_KEY = ""; 
-// Configurazione per GitHub Pages: nome della repo per i percorsi
 const REPO_BASE = '/games-rifugioIncantato';
+
+// --- DATABASE OGGETTI ---
+const FOOD_ITEMS = [
+  { name: "Mela Rossa", emoji: "🍎", value: 15, msg: "Una mela al giorno..." },
+  { name: "Hamburger", emoji: "🍔", value: 35, msg: "Che abbuffata!" },
+  { name: "Pizza", emoji: "🍕", value: 30, msg: "Mamma mia che buona!" },
+  { name: "Gelato", emoji: "🍦", value: 20, msg: "Brrr... che freddo!" },
+  { name: "Carota", emoji: "🥕", value: 10, msg: "Fa bene alla vista!" },
+  { name: "Sushi", emoji: "🍣", value: 25, msg: "Molto raffinato!" },
+  { name: "Ciambella", emoji: "🍩", value: 15, msg: "Gnam gnam!" },
+];
+
+const TOYS = [
+  { name: "Pallone", emoji: "⚽" },
+  { name: "Videogioco", emoji: "🎮" },
+  { name: "Aquilone", emoji: "🪁" },
+];
+
+const MEDICINES = [
+  { name: "Sciroppo", emoji: "🧪" },
+  { name: "Cerotto", emoji: "🩹" },
+  { name: "Pillola Magica", emoji: "💊" },
+];
 
 // --- MOTORE AI (GEMINI SIMULATO) ---
 class GeminiTutor {
-  constructor() {
-    this.history = []; 
-  }
-
+  constructor() { this.history = []; }
   recordAnswer(type, problem, isCorrect, timeTaken) {
     this.history.push({ type, problem, isCorrect, timeTaken });
     if (this.history.length > 20) this.history.shift(); 
   }
-
   async evaluateLevel(currentLevel) {
-    if (USE_REAL_AI && GOOGLE_API_KEY) {
-      console.log("Chiamata a Gemini in corso..."); 
-    }
     const recent = this.history.slice(-5);
     if (recent.length < 5) return currentLevel;
-
     const correctCount = recent.filter(h => h.isCorrect).length;
     if (correctCount <= 1) return Math.max(1, currentLevel - 1);
     if (correctCount === 5) return Math.min(10, currentLevel + 1);
-
     return currentLevel;
   }
 }
-
 const aiTutor = new GeminiTutor();
 
 // --- LISTA FRASI DEL PET ---
@@ -60,7 +72,6 @@ const INITIAL_GAME_STATE = {
 };
 
 // --- COMPONENTI GRAFICI ---
-
 const GlassCard = ({ children, className = "" }) => (
   <div className={`bg-white/30 backdrop-blur-xl border border-white/50 shadow-xl rounded-3xl ${className}`}>
     {children}
@@ -104,7 +115,7 @@ const ActionButton = ({ icon: Icon, label, color, gradient, onClick, disabled, u
 const Bubble = ({ text }) => {
   if (!text) return null;
   return (
-    <div className="absolute -top-24 left-1/2 transform -translate-x-1/2 z-20 w-64">
+    <div className="absolute -top-32 left-1/2 transform -translate-x-1/2 z-20 w-64">
       <div className="bg-white text-slate-800 p-4 rounded-2xl rounded-bl-none shadow-2xl border-2 border-indigo-100 animate-bounce-in relative">
         <p className="font-bold text-center text-sm leading-tight">{text}</p>
         <div className="absolute -bottom-3 left-6 w-0 h-0 border-l-[10px] border-l-transparent border-t-[15px] border-t-white border-r-[10px] border-r-transparent filter drop-shadow-sm"></div>
@@ -113,8 +124,8 @@ const Bubble = ({ text }) => {
   );
 };
 
-// --- MODALE MATEMATICA ---
-const MathModal = ({ isOpen, type, difficultyLevel, onClose, onSuccess }) => {
+// --- MODALE MATEMATICA CON RICOMPENSA VISIBILE ---
+const MathModal = ({ isOpen, type, difficultyLevel, rewardItem, onClose, onSuccess }) => {
   const [problem, setProblem] = useState(null);
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState(null);
@@ -171,9 +182,17 @@ const MathModal = ({ isOpen, type, difficultyLevel, onClose, onSuccess }) => {
   return (
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className={`bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl transform transition-all ${feedback === 'wrong' ? 'animate-shake border-4 border-red-300' : 'border-4 border-white'}`}>
+        
+        {/* HEADER CON RICOMPENSA */}
         <div className="text-center mb-6">
-          <h3 className="text-2xl font-black text-indigo-900 mb-1">{type === 'heal' ? '🚑 AIUTO!' : '✨ MAGIA!'}</h3>
-          <p className="text-indigo-400 font-bold">Risolvi per ottenere l'oggetto</p>
+          <h3 className="text-xl font-bold text-indigo-900 mb-1">
+            {type === 'heal' ? '🚑 CURA' : type === 'food' ? '🍎 CUCINA' : '✨ GIOCA'}
+          </h3>
+          <div className="flex items-center justify-center gap-2 bg-indigo-50 py-2 px-4 rounded-xl border border-indigo-100 mt-2">
+            <span className="text-indigo-400 font-bold text-xs uppercase">Vinci:</span>
+            <span className="text-2xl">{rewardItem?.emoji || '⭐'}</span>
+            <span className="text-indigo-800 font-bold">{rewardItem?.name || 'Punti'}</span>
+          </div>
         </div>
 
         <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-2xl p-8 mb-8 border-2 border-indigo-200 shadow-inner relative overflow-hidden">
@@ -209,24 +228,17 @@ const MathModal = ({ isOpen, type, difficultyLevel, onClose, onSuccess }) => {
 export default function App() {
   const [gameState, setGameState] = useState(INITIAL_GAME_STATE);
   const [activeModal, setActiveModal] = useState(null);
+  const [currentReward, setCurrentReward] = useState(null); // L'oggetto che si sta vincendo
+  const [floatingItem, setFloatingItem] = useState(null); // L'oggetto che vola
   const [message, setMessage] = useState(null);
   const [petThought, setPetThought] = useState("Ciao! Giochiamo?"); 
   const [isMuted, setIsMuted] = useState(false); 
   
-  // --- REGISTRAZIONE SERVICE WORKER (Integrata qui per sicurezza) ---
+  // --- REGISTRAZIONE SERVICE WORKER ---
   useEffect(() => {
     if ('serviceWorker' in navigator) {
-      // Nota: usiamo il path relativo al repo GitHub per far funzionare la PWA
       const swPath = `${REPO_BASE}/sw.js`;
-      
-      navigator.serviceWorker.register(swPath)
-        .then(registration => {
-          console.log('SW registrato per:', REPO_BASE, registration.scope);
-        })
-        .catch(error => {
-          // Logga errore ma non bloccare l'app
-          console.log('SW registrazione fallita (normale in preview senza sw.js reale):', error);
-        });
+      navigator.serviceWorker.register(swPath).catch(e => console.log(e));
     }
   }, []);
 
@@ -241,9 +253,10 @@ export default function App() {
     window.speechSynthesis.speak(utterance);
   }, [isMuted]);
 
+  // Pensieri automatici
   useEffect(() => {
     const thoughtInterval = setInterval(() => {
-      if (activeModal) return;
+      if (activeModal || floatingItem) return; // Zitto se mangia o gioca
       const { stats, status } = gameState.pet;
       let mood = 'happy';
       if (status === 'sick' || stats.health < 40) mood = 'sick';
@@ -258,29 +271,9 @@ export default function App() {
       setTimeout(() => setPetThought(null), 5000);
     }, 12000); 
     return () => clearInterval(thoughtInterval);
-  }, [gameState.pet, activeModal, speak]);
+  }, [gameState.pet, activeModal, speak, floatingItem]);
 
-
-  // --- CARICAMENTO & SALVATAGGIO ---
-  useEffect(() => {
-    const saved = localStorage.getItem('rifugio_v3');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        const now = Date.now();
-        const last = new Date(parsed.pet.lastLogin).getTime();
-        const hoursPassed = (now - last) / (1000 * 60 * 60);
-        
-        if (hoursPassed > 1) {
-          parsed.pet.stats.hunger = Math.max(0, parsed.pet.stats.hunger - (hoursPassed * 5));
-          parsed.pet.stats.happiness = Math.max(0, parsed.pet.stats.happiness - (hoursPassed * 2));
-          setMessage(`Mentre dormivi sono passate ${Math.floor(hoursPassed)} ore!`);
-        }
-        setGameState(parsed);
-      } catch (e) { console.error(e); }
-    }
-  }, []);
-
+  // Salvataggio
   useEffect(() => {
     localStorage.setItem('rifugio_v3', JSON.stringify({
       ...gameState,
@@ -288,7 +281,7 @@ export default function App() {
     }));
   }, [gameState]);
 
-  // --- LOOP DI GIOCO ---
+  // Loop di gioco
   useEffect(() => {
     const interval = setInterval(() => {
       setGameState(prev => {
@@ -308,29 +301,63 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // --- AZIONI UTENTE ---
-  const handleSuccess = async (type) => {
-    let thought = "";
-    setGameState(prev => {
-      const s = { ...prev.pet.stats };
-      let stars = 5;
-      if (type === 'food') { s.hunger = Math.min(100, s.hunger + 30); stars = 5; thought = "Gnam gnam! Delizioso! 😋"; }
-      if (type === 'play') { s.happiness = Math.min(100, s.happiness + 25); stars = 8; thought = "Che divertimento!! 🎉"; }
-      if (type === 'heal') { s.health = Math.min(100, s.health + 20); stars = 15; thought = "Mi sento fortissimo! 💪"; }
-      setPetThought(thought);
-      return {
-        ...prev,
-        wallet: { stars: prev.wallet.stars + stars },
-        pet: { ...prev.pet, stats: s },
-        difficulty: { ...prev.difficulty, streak: prev.difficulty.streak + 1 }
-      };
-    });
+  // --- LOGICA AZIONI ---
+  
+  const startAction = (type) => {
+    // Scegli una ricompensa casuale prima di aprire il modale
+    let reward = null;
+    if (type === 'food') reward = FOOD_ITEMS[Math.floor(Math.random() * FOOD_ITEMS.length)];
+    else if (type === 'play') reward = TOYS[Math.floor(Math.random() * TOYS.length)];
+    else if (type === 'heal') reward = MEDICINES[Math.floor(Math.random() * MEDICINES.length)];
     
-    speak(thought); 
-    const newLevel = await aiTutor.evaluateLevel(gameState.difficulty.mathLevel);
-    if (newLevel !== gameState.difficulty.mathLevel) {
-      setGameState(prev => ({ ...prev, difficulty: { ...prev.difficulty, mathLevel: newLevel } }));
-    }
+    setCurrentReward(reward);
+    setActiveModal(type);
+  };
+
+  const handleSuccess = async (type) => {
+    const reward = currentReward;
+    
+    // 1. Avvia Animazione Consegna (Floating Item)
+    setFloatingItem(reward);
+    setPetThought(type === 'food' ? "Yumm!! 😋" : "Evviva!! 🎉");
+    speak(type === 'food' ? "Gnam gnam!" : "Evviva!");
+
+    // 2. Attendi animazione prima di aggiornare stats
+    setTimeout(async () => {
+      setFloatingItem(null); // Nascondi oggetto
+      
+      setGameState(prev => {
+        const s = { ...prev.pet.stats };
+        let stars = 5;
+        let value = reward?.value || 20;
+
+        if (type === 'food') { 
+          s.hunger = Math.min(100, s.hunger + value); 
+          stars = 5; 
+        }
+        if (type === 'play') { 
+          s.happiness = Math.min(100, s.happiness + 25); 
+          stars = 8; 
+        }
+        if (type === 'heal') { 
+          s.health = Math.min(100, s.health + 20); 
+          stars = 15; 
+        }
+
+        return {
+          ...prev,
+          wallet: { stars: prev.wallet.stars + stars },
+          pet: { ...prev.pet, stats: s },
+          difficulty: { ...prev.difficulty, streak: prev.difficulty.streak + 1 }
+        };
+      });
+
+      // Valutazione livello
+      const newLevel = await aiTutor.evaluateLevel(gameState.difficulty.mathLevel);
+      if (newLevel !== gameState.difficulty.mathLevel) {
+        setGameState(prev => ({ ...prev, difficulty: { ...prev.difficulty, mathLevel: newLevel } }));
+      }
+    }, 2000); // 2 secondi di animazione "mangia/gioca"
   };
 
   const recoverPet = () => {
@@ -372,10 +399,7 @@ export default function App() {
         </GlassCard>
 
         <div className="flex gap-2">
-          <button 
-            onClick={() => setIsMuted(!isMuted)} 
-            className="p-3 rounded-full bg-white/20 backdrop-blur border border-white/30 shadow-lg text-white hover:bg-white/30 transition active:scale-95"
-          >
+          <button onClick={() => setIsMuted(!isMuted)} className="p-3 rounded-full bg-white/20 backdrop-blur border border-white/30 shadow-lg text-white hover:bg-white/30 transition active:scale-95">
             {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
           </button>
           
@@ -394,16 +418,24 @@ export default function App() {
           </div>
         )}
 
+        {/* Floating Item Animation */}
+        {floatingItem && (
+          <div className="absolute z-50 animate-bounce-in flex flex-col items-center justify-center transition-all duration-[2000ms] ease-in-out transform translate-y-20 scale-50 opacity-0"
+               style={{ animation: 'bounce-in 0.5s forwards, fade-out 0.5s 1.5s forwards' }}>
+            <div className="text-[120px] filter drop-shadow-2xl">{floatingItem.emoji}</div>
+            <div className="bg-white/90 px-4 py-1 rounded-full font-bold text-indigo-800 shadow-lg">
+              +{floatingItem.value || 20}
+            </div>
+          </div>
+        )}
+
         <div className="relative w-full flex justify-center">
           {!isRunaway && <Bubble text={petThought} />}
 
           <div 
-            onClick={() => {
-               const txt = "Ehi! Ciao! 👋"; 
-               setPetThought(txt); 
-               speak(txt);
-            }} 
-            className="relative z-10 transform transition duration-500 hover:scale-110 active:scale-95 cursor-pointer filter drop-shadow-2xl"
+            onClick={() => { const txt = "Ehi! Ciao! 👋"; setPetThought(txt); speak(txt); }} 
+            className={`relative z-10 transform transition duration-500 hover:scale-110 active:scale-95 cursor-pointer filter drop-shadow-2xl 
+              ${floatingItem ? 'scale-110' : ''}`}
           >
              <div className="text-[160px] leading-none select-none animate-[bounce_3s_infinite]">
                {isRunaway ? "💨" : pet.status === 'sick' ? "🤒" : pet.stats.happiness > 80 ? "🦊" : "😿"}
@@ -417,10 +449,7 @@ export default function App() {
             <GlassCard className="p-6 text-center">
               <h3 className="text-xl font-bold text-indigo-900 mb-2">Oh no! Batuffolo è andato via!</h3>
               <p className="text-indigo-700 mb-6 text-sm">Era troppo triste o affamato. Vuoi provare a chiamarlo?</p>
-              <button 
-                onClick={recoverPet} 
-                className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
-              >
+              <button onClick={recoverPet} className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2">
                 <Star size={18} className="fill-white" /> Richiama (50)
               </button>
             </GlassCard>
@@ -445,21 +474,21 @@ export default function App() {
                 label="Mangia" 
                 icon={Utensils} 
                 gradient="bg-gradient-to-br from-amber-400 to-orange-500"
-                onClick={() => setActiveModal('food')}
+                onClick={() => startAction('food')}
                 disabled={pet.stats.hunger >= 100}
               />
               <ActionButton 
                 label="Gioca" 
                 icon={Gamepad2} 
                 gradient="bg-gradient-to-br from-sky-400 to-blue-500"
-                onClick={() => setActiveModal('play')}
+                onClick={() => startAction('play')}
                 disabled={pet.stats.happiness >= 100}
               />
               <ActionButton 
                 label="Cura" 
                 icon={Activity} 
                 gradient="bg-gradient-to-br from-rose-400 to-red-600"
-                onClick={() => setActiveModal('heal')}
+                onClick={() => startAction('heal')}
                 disabled={pet.stats.health >= 100}
                 urgent={pet.stats.health < 40}
               />
@@ -472,6 +501,7 @@ export default function App() {
         isOpen={!!activeModal} 
         type={activeModal}
         difficultyLevel={gameState.difficulty.mathLevel}
+        rewardItem={currentReward}
         onClose={() => setActiveModal(null)}
         onSuccess={handleSuccess}
       />
