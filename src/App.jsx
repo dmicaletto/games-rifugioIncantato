@@ -10,7 +10,6 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "firebase/firestor
 
 // --- CONFIGURAZIONE SISTEMA ---
 const REPO_BASE = '/games-rifugioIncantato';
-// Versione fissata staticamente per compatibilità
 const APP_VERSION = '1.1.0';
 
 // Your web app's Firebase configuration
@@ -48,7 +47,7 @@ const ENVIRONMENTS = {
   forest: { 
     id: 'forest', 
     name: "Foresta Incantata", 
-    colors: { floor: "#4ade80", wall: "#7dd3fc", bg: "bg-emerald-900" }, // Pavimento erba, Muri cielo
+    colors: { floor: "#4ade80", wall: "#7dd3fc", bg: "bg-emerald-900" }, 
     gridColor: 0x22c55e
   }
 };
@@ -83,11 +82,9 @@ const MEDICINES = [
 
 const MARKET_ITEMS = {
   decor: [
-    // Livello Base
     { id: 'rug_rainbow', name: "Tappeto", emoji: "🌈", price: 150, type: 'rug', pos: [0, 0.05, 0], scale: 3, isFlat: true, levelReq: 1 },
     { id: 'plant', name: "Pianta", emoji: "🪴", price: 80, type: 'plant', pos: [-3, 0.8, -3], scale: 2, levelReq: 1 },
     { id: 'lamp', name: "Lampada", emoji: "🌟", price: 120, type: 'lamp', pos: [3, 2, -3.5], scale: 1.5, levelReq: 1 },
-    // Livello Avanzato (Foresta/Lusso)
     { id: 'throne', name: "Trono", emoji: "👑", price: 500, type: 'chair', pos: [0, 1, -4], scale: 2.5, levelReq: 5 },
     { id: 'fountain', name: "Fontana", emoji: "⛲", price: 400, type: 'center', pos: [3, 1, 3], scale: 2.5, levelReq: 3 },
     { id: 'chest', name: "Tesoro", emoji: "💎", price: 250, type: 'storage', pos: [-3, 0.5, 3], scale: 1.5, levelReq: 2 },
@@ -101,70 +98,148 @@ const MARKET_ITEMS = {
   ]
 };
 
-// --- STATO INIZIALE AGGIORNATO ---
+// --- STATO INIZIALE ---
 const INITIAL_GAME_STATE = {
   user: { name: "Piccola Maga" },
   levelSystem: { level: 1, currentStars: 0, nextLevelStars: 50 },
   wallet: { money: 100 },
   inventory: [],
-  unlockedPets: ['fox'], // Lista ID pet sbloccati
-  activePetId: 'fox',    // Pet attualmente visibile
-  petsData: {            // Stato separato per ogni pet
-    fox: { 
-      stats: { health: 80, hunger: 60, happiness: 90 },
-      status: "normal"
-    },
-    dragon: {
-      stats: { health: 100, hunger: 100, happiness: 100 },
-      status: "normal"
-    }
+  unlockedPets: ['fox'],
+  activePetId: 'fox',
+  petsData: {
+    fox: { stats: { health: 80, hunger: 60, happiness: 90 }, status: "normal" },
+    dragon: { stats: { health: 100, hunger: 100, happiness: 100 }, status: "normal" }
   },
-  decor: { // Decorazioni per ambiente
-    room: {},
-    forest: {}
-  },
+  decor: { room: {}, forest: {} },
   lastLogin: new Date().toISOString()
 };
 
-// --- MOTORE AI ---
+// --- MOTORE AI POTENZIATO ---
 class GeminiTutor {
   constructor() { 
     this.history = []; 
     this.apiKey = null;
   }
-  setApiKey(key) { this.apiKey = key; }
-  recordAnswer(type, problem, isCorrect, timeTaken) { 
-    this.history.push({ type, problem, isCorrect, timeTaken });
-    if (this.history.length > 20) this.history.shift(); 
+
+  setApiKey(key) { 
+    this.apiKey = key; 
+    console.log("✅ Gemini API Key caricata (lunghezza: " + key.length + ")");
   }
+
+  recordAnswer(type, problem, isCorrect, timeTaken) { 
+    this.history.push({ type, problem, isCorrect, timeTaken, timestamp: Date.now() });
+    if (this.history.length > 30) this.history.shift(); 
+  }
+
+  // Genera problema usando Gemini o Fallback Locale
+  async generateProblem(level, type) {
+    // Fallback locale se no key o errore
+    const localProblem = this.generateLocalProblem(level, type);
+
+    if (!this.apiKey) {
+      console.warn("⚠️ Nessuna API Key, uso generatore locale.");
+      return localProblem;
+    }
+
+    try {
+      // Analisi errori recenti per il prompt
+      const errors = this.history.filter(h => !h.isCorrect).map(h => h.problem).slice(-5);
+      const focusText = errors.length > 0 ? `L'utente ha sbagliato recentemente: ${errors.join(', ')}. Genera qualcosa di simile per farla esercitare.` : "L'utente sta andando bene, aumenta leggermente la difficoltà.";
+
+      const prompt = `
+        Sei un tutor di matematica per una bambina di scuola elementare (Livello Gioco: ${level}).
+        Genera un singolo problema matematico divertente.
+        
+        Tipo richiesto: ${type === 'play' ? 'Moltiplicazioni/Tabelline' : type === 'food' ? 'Somme/Sottrazioni' : 'Divisioni o Logica semplice'}.
+        Difficoltà: Proporzionale al livello ${level} (1=Facile, 5=Medio, 10=Difficile).
+        Focus: ${focusText}
+        
+        IMPORTANTE: 
+        - Nel 30% dei casi, invece di un'operazione (es "5 + 5"), proponi un brevissimo problema a parole (es. "Luca ha 2 mele e ne trova 3. Quante mele ha?").
+        - Rispondi SOLO in formato JSON valido: { "text": "testo del problema", "result": numero_intero_risultato }
+      `;
+
+      console.log("🤖 Chiedo a Gemini...");
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${this.apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: "application/json" }
+        })
+      });
+
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message);
+      
+      const content = JSON.parse(data.candidates[0].content.parts[0].text);
+      console.log("🤖 Gemini ha risposto:", content);
+      return content;
+
+    } catch (e) {
+      console.error("❌ Errore Gemini (uso locale):", e);
+      return localProblem;
+    }
+  }
+
+  // Generatore Locale (Matematica di base)
+  generateLocalProblem(level, type) {
+    const rnd = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+    let n1, n2, operator, result;
+    
+    // Scaling difficoltà locale
+    const maxNum = 10 + (level * 5); 
+
+    if (type === 'food') { // Somme/Sottrazioni
+      operator = Math.random() > 0.5 ? '+' : '-';
+      n1 = rnd(1, maxNum);
+      n2 = rnd(1, maxNum);
+      if (operator === '-' && n1 < n2) [n1, n2] = [n2, n1];
+      result = operator === '+' ? n1 + n2 : n1 - n2;
+    } 
+    else if (type === 'play') { // Moltiplicazioni
+      operator = '×';
+      const maxTab = Math.min(10, 2 + level);
+      n1 = rnd(1, maxTab);
+      n2 = rnd(1, 10);
+      result = n1 * n2;
+    } 
+    else { // Divisioni (Healing)
+      operator = ':';
+      n2 = rnd(2, Math.min(9, 1 + level));
+      result = rnd(1, 10);
+      n1 = n2 * result; // Garantisce divisione intera
+    }
+
+    return { text: `${n1} ${operator} ${n2}`, result };
+  }
+
   async evaluateLevel(currentLevel) { 
+    // Qui potremmo chiedere a Gemini se promuovere l'utente, 
+    // ma per ora manteniamo la logica locale basata sulle stelle per semplicità di gameplay.
     const recent = this.history.slice(-5);
     if (recent.length < 5) return currentLevel;
     const correctCount = recent.filter(h => h.isCorrect).length;
     if (correctCount <= 1) return Math.max(1, currentLevel - 1);
-    if (correctCount === 5) return Math.min(10, currentLevel + 1);
+    // Nota: Il level up principale avviene accumulando XP, questo serve per aggiustare il "mathLevel" interno
+    if (correctCount === 5) return Math.min(20, currentLevel + 1);
     return currentLevel;
   }
 }
 const aiTutor = new GeminiTutor();
 
-// --- SCENA 3D ---
+// --- SCENA 3D (Invariata) ---
 const Room3D = ({ decor, petEmoji, envId }) => {
   const env = ENVIRONMENTS[envId] || ENVIRONMENTS.room;
-  
   return (
     <>
       <ambientLight intensity={0.8} />
       <directionalLight position={[5, 10, 5]} intensity={1} />
-      
-      {/* PAVIMENTO */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
         <planeGeometry args={[12, 12]} />
         <meshStandardMaterial color={env.colors.floor} />
       </mesh>
       <gridHelper args={[12, 12, env.gridColor, env.gridColor]} position={[0, 0.01, 0]} />
-
-      {/* PARETI (Solo per Room, la Foresta è aperta) */}
       {envId === 'room' ? (
         <>
           <mesh position={[0, 3, -6]}> <boxGeometry args={[12, 6, 0.1]} /> <meshStandardMaterial color={env.colors.wall} /> </mesh>
@@ -172,15 +247,12 @@ const Room3D = ({ decor, petEmoji, envId }) => {
           <mesh position={[6, 3, 0]} rotation={[0, -Math.PI / 2, 0]}> <boxGeometry args={[12, 6, 0.1]} /> <meshStandardMaterial color="#a5b4fc" /> </mesh>
         </>
       ) : (
-        // Alberi di sfondo per la foresta
         <>
           <Billboard position={[-4, 2, -5]} scale={5}><Html pointerEvents="none"><div className="text-[100px]">🌲</div></Html></Billboard>
           <Billboard position={[4, 2, -5]} scale={5}><Html pointerEvents="none"><div className="text-[100px]">🌲</div></Html></Billboard>
           <Billboard position={[0, 2, -6]} scale={6}><Html pointerEvents="none"><div className="text-[100px]">🌳</div></Html></Billboard>
         </>
       )}
-
-      {/* PET */}
       <Billboard position={[0, 1, 0]} follow={true} lockX={false} lockY={false} lockZ={false}>
         <Html transform center pointerEvents="none" zIndexRange={[100, 0]}>
           <div className="text-[120px] drop-shadow-2xl animate-bounce-slow select-none filter drop-shadow-lg transition-transform duration-500 hover:scale-110">
@@ -192,39 +264,15 @@ const Room3D = ({ decor, petEmoji, envId }) => {
         <circleGeometry args={[1, 32]} />
         <meshBasicMaterial color="black" opacity={0.2} transparent />
       </mesh>
-
-      {/* DECORAZIONI */}
       {Object.values(decor).map((item) => {
         if (item.isFlat) { 
-          return (
-            <group key={item.id} position={item.pos} rotation={[-Math.PI/2, 0, 0]}>
-               <Html transform center pointerEvents="none" zIndexRange={[0, 0]}>
-                 <div style={{ fontSize: `${item.scale * 40}px`, opacity: 0.9 }}>{item.emoji}</div>
-               </Html>
-            </group>
-          );
+          return <group key={item.id} position={item.pos} rotation={[-Math.PI/2, 0, 0]}><Html transform center pointerEvents="none" zIndexRange={[0, 0]}><div style={{ fontSize: `${item.scale * 40}px`, opacity: 0.9 }}>{item.emoji}</div></Html></group>;
         }
         if (item.isWall && envId === 'room') { 
-           return (
-            <group key={item.id} position={item.pos}>
-               <Html transform center pointerEvents="none">
-                 <div style={{ fontSize: `${item.scale * 30}px` }}>{item.emoji}</div>
-               </Html>
-            </group>
-           );
+           return <group key={item.id} position={item.pos}><Html transform center pointerEvents="none"><div style={{ fontSize: `${item.scale * 30}px` }}>{item.emoji}</div></Html></group>;
         }
-        // Nella foresta niente oggetti a muro
         if (item.isWall && envId !== 'room') return null;
-
-        return ( 
-          <Billboard key={item.id} position={item.pos} follow={true}>
-            <Html transform center pointerEvents="none">
-              <div style={{ fontSize: `${item.scale * 40}px`, filter: 'drop-shadow(0 10px 5px rgba(0,0,0,0.3))' }}>
-                {item.emoji}
-              </div>
-            </Html>
-          </Billboard>
-        );
+        return <Billboard key={item.id} position={item.pos} follow={true}><Html transform center pointerEvents="none"><div style={{ fontSize: `${item.scale * 40}px`, filter: 'drop-shadow(0 10px 5px rgba(0,0,0,0.3))' }}>{item.emoji}</div></Html></Billboard>;
       })}
     </>
   );
@@ -314,7 +362,6 @@ const ShopModal = ({ isOpen, onClose, wallet, inventory, onBuy, level }) => {
   );
 };
 
-// Modale Mappa per cambiare ambiente
 const MapModal = ({ isOpen, onClose, currentEnv, unlockedPets, onTravel }) => {
   if (!isOpen) return null;
   return (
@@ -324,10 +371,7 @@ const MapModal = ({ isOpen, onClose, currentEnv, unlockedPets, onTravel }) => {
           <MapIcon /> Mappa del Mondo
         </h3>
         <div className="space-y-4">
-          <div 
-            onClick={() => onTravel('room', 'fox')}
-            className={`p-4 rounded-2xl border-4 cursor-pointer transition-all flex items-center gap-4 ${currentEnv === 'room' ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}
-          >
+          <div onClick={() => onTravel('room', 'fox')} className={`p-4 rounded-2xl border-4 cursor-pointer transition-all flex items-center gap-4 ${currentEnv === 'room' ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>
             <div className="text-4xl">🦊</div>
             <div>
               <div className="font-bold text-lg text-indigo-900">Cameretta</div>
@@ -335,19 +379,11 @@ const MapModal = ({ isOpen, onClose, currentEnv, unlockedPets, onTravel }) => {
             </div>
             {currentEnv === 'room' && <span className="ml-auto text-indigo-600 font-bold">📍 Qui</span>}
           </div>
-
-          <div 
-            onClick={() => {
-              if (unlockedPets.includes('dragon')) onTravel('forest', 'dragon');
-            }}
-            className={`p-4 rounded-2xl border-4 transition-all flex items-center gap-4 ${unlockedPets.includes('dragon') ? 'cursor-pointer border-emerald-500 bg-emerald-50' : 'border-slate-200 opacity-60 grayscale'}`}
-          >
+          <div onClick={() => { if (unlockedPets.includes('dragon')) onTravel('forest', 'dragon'); }} className={`p-4 rounded-2xl border-4 transition-all flex items-center gap-4 ${unlockedPets.includes('dragon') ? 'cursor-pointer border-emerald-500 bg-emerald-50' : 'border-slate-200 opacity-60 grayscale'}`}>
             <div className="text-4xl">🐲</div>
             <div>
               <div className="font-bold text-lg text-emerald-900">Foresta Incantata</div>
-              <div className="text-xs text-emerald-600 font-semibold">
-                {unlockedPets.includes('dragon') ? "Casa di Scintilla" : "Sblocca al Livello 5"}
-              </div>
+              <div className="text-xs text-emerald-600 font-semibold">{unlockedPets.includes('dragon') ? "Casa di Scintilla" : "Sblocca al Livello 5"}</div>
             </div>
             {!unlockedPets.includes('dragon') && <Lock className="ml-auto text-slate-400" />}
             {currentEnv === 'forest' && <span className="ml-auto text-emerald-600 font-bold">📍 Qui</span>}
@@ -359,23 +395,33 @@ const MapModal = ({ isOpen, onClose, currentEnv, unlockedPets, onTravel }) => {
   );
 };
 
-const MathModal = ({ isOpen, type, rewardItem, onClose, onSuccess }) => {
+const MathModal = ({ isOpen, type, difficultyLevel, rewardItem, onClose, onSuccess }) => {
   const [problem, setProblem] = useState(null);
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const startTime = useRef(Date.now());
   const inputRef = useRef(null);
 
   useEffect(() => {
     if (isOpen) {
-      let n1 = Math.floor(Math.random()*10)+1; let n2 = Math.floor(Math.random()*10)+1;
-      setProblem({ text: `${n1} + ${n2}`, result: n1+n2 });
-      setAnswer(""); setFeedback(null); startTime.current = Date.now();
-      setTimeout(() => inputRef.current?.focus(), 300);
+      setIsLoading(true);
+      setAnswer("");
+      setFeedback(null);
+      setProblem(null);
+      
+      // Chiamata asincrona al generatore
+      aiTutor.generateProblem(difficultyLevel, type).then(prob => {
+        setProblem(prob);
+        setIsLoading(false);
+        startTime.current = Date.now();
+        setTimeout(() => inputRef.current?.focus(), 100);
+      });
     }
-  }, [isOpen]);
+  }, [isOpen, difficultyLevel, type]);
 
   const checkAnswer = () => {
+    if (!problem) return;
     if(parseInt(answer) === problem.result) {
       setFeedback('correct');
       const time = (Date.now() - startTime.current) / 1000;
@@ -386,20 +432,31 @@ const MathModal = ({ isOpen, type, rewardItem, onClose, onSuccess }) => {
     }
   };
 
-  if (!isOpen || !problem) return null;
+  if (!isOpen) return null;
+
   return (
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" style={{zIndex: 200}}>
       <div className={`bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl transform transition-all ${feedback === 'wrong' ? 'animate-shake border-4 border-red-300' : 'border-4 border-white'}`}>
         <div className="text-center mb-6">
           <h3 className="text-xl font-bold text-indigo-900">Risolvi per {rewardItem?.emoji}</h3>
         </div>
-        <div className="bg-indigo-50 rounded-2xl p-6 mb-6 text-center border-2 border-indigo-100">
-          <span className="text-5xl font-black text-indigo-600">{problem.text}</span>
+        
+        <div className="bg-indigo-50 rounded-2xl p-6 mb-6 text-center border-2 border-indigo-100 min-h-[120px] flex items-center justify-center">
+          {isLoading ? (
+            <div className="animate-pulse text-indigo-400 font-bold">Generazione magica... ✨</div>
+          ) : (
+            <span className={`font-black text-indigo-600 ${problem?.text.length > 10 ? 'text-2xl' : 'text-5xl'}`}>
+              {problem?.text}
+            </span>
+          )}
         </div>
-        <div className="flex gap-2 w-full">
-          <input ref={inputRef} type="tel" value={answer} onChange={e=>setAnswer(e.target.value)} className="flex-1 min-w-0 text-center text-3xl font-black py-3 rounded-2xl border-4 border-indigo-100 outline-none text-indigo-900" placeholder="?" />
-          <button onClick={checkAnswer} className="bg-green-500 text-white rounded-2xl px-6 font-bold shadow-lg shrink-0">OK</button>
-        </div>
+        
+        {!isLoading && (
+          <div className="flex gap-2 w-full">
+            <input ref={inputRef} type="tel" value={answer} onChange={e=>setAnswer(e.target.value)} className="flex-1 min-w-0 text-center text-3xl font-black py-3 rounded-2xl border-4 border-indigo-100 outline-none text-indigo-900" placeholder="?" />
+            <button onClick={checkAnswer} className="bg-green-500 text-white rounded-2xl px-6 font-bold shadow-lg shrink-0">OK</button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -409,7 +466,7 @@ const MathModal = ({ isOpen, type, rewardItem, onClose, onSuccess }) => {
 
 export default function App() {
   const [gameState, setGameState] = useState(INITIAL_GAME_STATE);
-  const [activeModal, setActiveModal] = useState(null); // null, 'shop', 'map', 'food', etc.
+  const [activeModal, setActiveModal] = useState(null);
   const [currentReward, setCurrentReward] = useState(null);
   const [petThought, setPetThought] = useState("Ciao!");
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -417,7 +474,6 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [updateAvailable, setUpdateAvailable] = useState(false); 
 
-  // --- TTS FUNZIONALITÀ PARLATA (Spostata PRIMA degli handler) ---
   const speak = useCallback((text) => {
     if (isMuted || !text || typeof window === 'undefined') return;
     window.speechSynthesis.cancel();
@@ -435,7 +491,6 @@ export default function App() {
     intro: ["Ciao!", "Eccomi!"]
   };
 
-  // --- INIT FIREBASE E PERSISTENZA ---
   useEffect(() => {
     if (auth) {
       const initAuth = async () => {
@@ -447,21 +502,20 @@ export default function App() {
     }
   }, []);
 
-  // Caricamento Dati
   useEffect(() => {
     if (!db || !user) return;
-    
-    // 1. Chiavi Segrete
     getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'secrets')).then(snap => {
-      if(snap.exists() && snap.data().gemini_key) aiTutor.setApiKey(snap.data().gemini_key);
+      if(snap.exists() && snap.data().gemini_key) {
+        aiTutor.setApiKey(snap.data().gemini_key);
+        // Notifica visiva (opzionale)
+        console.log("Gemini Key trovata!");
+      }
     });
 
-    // 2. Caricamento Salvataggio
     const saveRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'gameState');
     const unsub = onSnapshot(saveRef, (docSnap) => {
       if (docSnap.exists()) {
         const remoteData = docSnap.data();
-        // Merge intelligente con stato locale per evitare di perdere campi nuovi
         setGameState(prev => ({
           ...INITIAL_GAME_STATE,
           ...remoteData,
@@ -473,7 +527,6 @@ export default function App() {
     return () => unsub();
   }, [user]);
 
-  // Salvataggio (Debounced)
   useEffect(() => {
     if (!user || !db) return;
     const timeout = setTimeout(() => {
@@ -483,10 +536,8 @@ export default function App() {
     return () => clearTimeout(timeout);
   }, [gameState, user]);
 
-  // PWA & Version
   useEffect(() => {
     window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); setDeferredPrompt(e); });
-    
     const checkVersion = async () => {
       try {
         const res = await fetch(`${REPO_BASE}/version.json?t=${Date.now()}`);
@@ -500,10 +551,8 @@ export default function App() {
     if ('serviceWorker' in navigator) navigator.serviceWorker.register(`${REPO_BASE}/sw.js`).catch(()=>{});
   }, []);
 
-  // --- LOGICA GIOCO ---
-  
   const handleTravel = (envId, petId) => {
-    setGameState(prev => ({ ...prev, activePetId: petId })); // L'ambiente è dedotto dal pet
+    setGameState(prev => ({ ...prev, activePetId: petId }));
     setActiveModal(null);
     speak(`Andiamo nella ${ENVIRONMENTS[envId].name}!`);
   };
@@ -511,12 +560,10 @@ export default function App() {
   const handleBuy = (item) => {
     if (gameState.wallet.money >= item.price) {
       setGameState(prev => {
-        const env = PETS_INFO[prev.activePetId].defaultEnv; // Compra per l'ambiente corrente
+        const env = PETS_INFO[prev.activePetId].defaultEnv;
         const newDecor = { ...prev.decor };
         if(!newDecor[env]) newDecor[env] = {};
-        
         newDecor[env][item.type] = item; 
-        
         return { 
           ...prev, 
           wallet: { money: prev.wallet.money - item.price }, 
@@ -539,16 +586,14 @@ export default function App() {
       
       let earnedMoney = time < 5 ? 20 : 10;
       let newLevelSystem = { ...prev.levelSystem, currentStars: prev.levelSystem.currentStars + 10 };
-      
-      // Level Up Logic
       let unlockedPets = [...prev.unlockedPets];
+      
       if (newLevelSystem.currentStars >= newLevelSystem.nextLevelStars) {
         newLevelSystem.level += 1;
         newLevelSystem.currentStars = 0;
         newLevelSystem.nextLevelStars = Math.floor(newLevelSystem.nextLevelStars * 1.5);
-        earnedMoney += 100; // Bonus livello
+        earnedMoney += 100; 
         
-        // Sblocco Drago al livello 5
         if (newLevelSystem.level === 5 && !unlockedPets.includes('dragon')) {
           unlockedPets.push('dragon');
           setTimeout(() => alert("🎉 HAI SBLOCCATO LA FORESTA E IL DRAGHETTO! 🎉\nClicca sulla Mappa per viaggiare!"), 500);
@@ -566,7 +611,6 @@ export default function App() {
     speak("Evviva!");
   };
 
-  // Aggiornamento App
   const handleUpdateApp = () => {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(regs => {
@@ -576,7 +620,14 @@ export default function App() {
     } else window.location.reload(true);
   };
 
-  // Pensieri (Usa speak)
+  const handleInstallClick = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') setDeferredPrompt(null);
+    }
+  };
+
   useEffect(() => {
     const interval = setInterval(() => {
       if (activeModal) return;
@@ -590,7 +641,6 @@ export default function App() {
     return () => clearInterval(interval);
   }, [gameState.petsData, gameState.activePetId, activeModal, speak]);
 
-  // Helper dati correnti
   const activePetInfo = PETS_INFO[gameState.activePetId];
   const activePetData = gameState.petsData[gameState.activePetId];
   const activeEnvId = activePetInfo.defaultEnv;
@@ -599,8 +649,6 @@ export default function App() {
 
   return (
     <div className={`fixed inset-0 ${activeEnv.colors.bg} font-sans text-slate-800 flex flex-col overflow-hidden select-none transition-colors duration-1000`}>
-      
-      {/* 3D SCENE */}
       <div className="absolute inset-0 z-0">
         <Canvas camera={{ position: [0, 5, 8], fov: 50 }}>
           <OrbitControls minPolarAngle={0} maxPolarAngle={Math.PI / 2 - 0.1} maxDistance={15} minDistance={5} enablePan={false} />
@@ -608,10 +656,7 @@ export default function App() {
         </Canvas>
       </div>
 
-      {/* UI OVERLAY */}
       <div className="absolute inset-0 pointer-events-none flex flex-col justify-between pb-6 z-10">
-        
-        {/* HEADER */}
         <div className="px-4 py-4 flex justify-between items-start pointer-events-auto">
           <GlassCard className="flex items-center gap-3 px-4 py-2 rounded-2xl !border-white/40 min-w-[140px]">
             <div className="bg-indigo-100 p-1.5 rounded-full"><User size={16} className="text-indigo-600"/></div>
@@ -623,17 +668,22 @@ export default function App() {
           </GlassCard>
 
           <div className="flex gap-2">
-            {/* Tasto Mappa */}
             <button onClick={() => setActiveModal('map')} className="p-3 rounded-full bg-white/20 backdrop-blur border border-white/30 text-white shadow-lg active:scale-95">
               <MapIcon size={20} />
             </button>
-
             {updateAvailable && (
               <button onClick={handleUpdateApp} className="p-3 rounded-full bg-green-500 text-white shadow-lg animate-pulse">
                 <RefreshCw size={20} className="animate-spin" />
               </button>
             )}
-            
+            {deferredPrompt && (
+              <button onClick={handleInstallClick} className="p-3 rounded-full bg-indigo-600 text-white shadow-lg animate-pulse active:scale-95">
+                <Download size={20} />
+              </button>
+            )}
+            <button onClick={() => setIsMuted(!isMuted)} className="p-3 rounded-full bg-white/20 backdrop-blur border border-white/30 shadow-lg text-white hover:bg-white/30 transition active:scale-95">
+              {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+            </button>
             <GlassCard className="flex items-center gap-2 px-3 py-2 rounded-full !bg-emerald-500/80 !border-emerald-300 shadow-lg">
               <Coins size={18} className="text-emerald-200 fill-white"/>
               <span className="font-black text-white text-md">{Math.floor(gameState.wallet.money)}</span>
@@ -641,7 +691,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* THOUGHT BUBBLE */}
         <div className="relative w-full flex justify-center pointer-events-none h-10">
            {petThought && (
              <div className="bg-white/90 backdrop-blur px-4 py-2 rounded-xl rounded-bl-none shadow-lg animate-bounce-in border border-indigo-100">
@@ -650,7 +699,6 @@ export default function App() {
            )}
         </div>
 
-        {/* BOTTOM CONTROLS */}
         <div className="px-4 pointer-events-auto mt-auto">
           <div className="flex justify-end mb-4">
              <button onClick={() => setActiveModal('shop')} className="bg-white p-3 rounded-full shadow-xl border-4 border-emerald-300 text-emerald-600 active:scale-95 animate-bounce-in">
@@ -676,9 +724,13 @@ export default function App() {
             </div>
           </GlassCard>
         </div>
+        
+        <div className="absolute bottom-1 right-2 text-[8px] text-white/20 pointer-events-none">
+          v{APP_VERSION}
+        </div>
       </div>
 
-      <MathModal isOpen={['food', 'play', 'heal'].includes(activeModal)} type={activeModal} rewardItem={currentReward} onClose={() => setActiveModal(null)} onSuccess={handleSuccess} />
+      <MathModal isOpen={['food', 'play', 'heal'].includes(activeModal)} type={activeModal} difficultyLevel={gameState.difficulty.mathLevel} rewardItem={currentReward} onClose={() => setActiveModal(null)} onSuccess={handleSuccess} />
       <ShopModal isOpen={activeModal === 'shop'} onClose={() => setActiveModal(null)} wallet={gameState.wallet} inventory={gameState.inventory} onBuy={handleBuy} level={gameState.levelSystem.level} />
       <MapModal isOpen={activeModal === 'map'} onClose={() => setActiveModal(null)} currentEnv={activeEnvId} unlockedPets={gameState.unlockedPets} onTravel={handleTravel} />
     </div>
