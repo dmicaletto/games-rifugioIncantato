@@ -22,7 +22,7 @@ const firebaseConfig = {
   messagingSenderId: "841982374698",
   appId: "1:841982374698:web:0289d0aac7d926b07ce453"
 };
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'rifugio-incantato-app-id';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 let auth = null;
 let db = null;
@@ -417,6 +417,24 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [updateAvailable, setUpdateAvailable] = useState(false); 
 
+  // --- TTS FUNZIONALITÀ PARLATA (Spostata PRIMA degli handler) ---
+  const speak = useCallback((text) => {
+    if (isMuted || !text || typeof window === 'undefined') return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'it-IT'; utterance.pitch = 1.4; utterance.rate = 1.1;  
+    window.speechSynthesis.speak(utterance);
+  }, [isMuted]);
+
+  const PET_PHRASES = {
+    hungry: ["Pancino vuoto...", "Ho fame!", "Cibo?"],
+    bored: ["Che noia...", "Giochiamo?", "Uffa..."],
+    sick: ["Non sto bene...", "Aiuto...", "Gulp..."],
+    happy: ["Sei mitica!", "Ti voglio bene!", "Evviva!"],
+    sleepy: ["Zzz...", "Nanna..."],
+    intro: ["Ciao!", "Eccomi!"]
+  };
+
   // --- INIT FIREBASE E PERSISTENZA ---
   useEffect(() => {
     if (auth) {
@@ -557,6 +575,20 @@ export default function App() {
       });
     } else window.location.reload(true);
   };
+
+  // Pensieri (Usa speak)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (activeModal) return;
+      const mood = gameState.petsData[gameState.activePetId].stats.health < 40 ? 'sick' : gameState.petsData[gameState.activePetId].stats.hunger < 40 ? 'hungry' : 'happy';
+      const phrases = PET_PHRASES[mood];
+      const txt = phrases[Math.floor(Math.random() * phrases.length)];
+      setPetThought(txt);
+      speak(txt);
+      setTimeout(() => setPetThought(null), 4000);
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [gameState.petsData, gameState.activePetId, activeModal, speak]);
 
   // Helper dati correnti
   const activePetInfo = PETS_INFO[gameState.activePetId];
