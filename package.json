@@ -1,7 +1,7 @@
 {
   "name": "il-rifugio-incantato",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "homepage": "https://dmicaletto.github.io/games-rifugioIncantato/",
   "scripts": {
