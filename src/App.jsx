@@ -1,10 +1,36 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Html, Billboard } from '@react-three/drei';
-import { Heart, Smile, Star, Utensils, Gamepad2, User, Activity, Sparkles, Zap, Volume2, VolumeX, ShoppingBag, Store, Coins, Download, Rotate3d } from 'lucide-react';
+import { Heart, Smile, Star, Utensils, Gamepad2, User, Activity, Sparkles, Zap, Volume2, VolumeX, ShoppingBag, Store, Coins, Download, Rotate3d, RefreshCw } from 'lucide-react';
+
+// --- FIREBASE IMPORTS ---
+import { initializeApp } from "firebase/app";
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "firebase/auth";
+import { getFirestore, doc, getDoc } from "firebase/firestore";
 
 // --- CONFIGURAZIONE SISTEMA ---
 const REPO_BASE = '/games-rifugioIncantato';
+// Recupera la versione definita in vite.config.js o usa default
+const APP_VERSION = import.meta.env.PACKAGE_VERSION || '1.0.0';
+
+// Inizializzazione Firebase sicura
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+let auth = null;
+let db = null;
+
+if (firebaseConfig) {
+  try {
+    const app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+  } catch (e) {
+    console.error("Errore inizializzazione Firebase:", e);
+  }
+} else {
+  console.warn("Configurazione Firebase non trovata.");
+}
 
 // --- DATABASE OGGETTI GIOCO ---
 const FOOD_ITEMS = [
@@ -63,14 +89,27 @@ const INITIAL_GAME_STATE = {
   decor: {} 
 };
 
-// --- MOTORE AI (SIMULATO) ---
+// --- MOTORE AI ---
 class GeminiTutor {
-  constructor() { this.history = []; }
+  constructor() { 
+    this.history = []; 
+    this.apiKey = null;
+  }
+
+  setApiKey(key) {
+    this.apiKey = key;
+    console.log("Gemini AI attivata! 🧠");
+  }
+
   recordAnswer(type, problem, isCorrect, timeTaken) { 
     this.history.push({ type, problem, isCorrect, timeTaken });
     if (this.history.length > 20) this.history.shift(); 
   }
+
   async evaluateLevel(currentLevel) { 
+    if (this.apiKey) {
+      // TODO: Implementare chiamata reale a Gemini
+    }
     const recent = this.history.slice(-5);
     if (recent.length < 5) return currentLevel;
     const correctCount = recent.filter(h => h.isCorrect).length;
@@ -91,36 +130,22 @@ const PET_PHRASES = {
 };
 
 // --- SCENA 3D ---
-
 const Room3D = ({ decor, petEmoji }) => {
   return (
     <>
-      {/* LUCI */}
       <ambientLight intensity={0.8} />
       <directionalLight position={[5, 10, 5]} intensity={1} />
       
-      {/* PAVIMENTO */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
         <planeGeometry args={[10, 10]} />
         <meshStandardMaterial color="#e0c097" />
       </mesh>
       <gridHelper args={[10, 10, 0xc0a077, 0xc0a077]} position={[0, 0.01, 0]} />
 
-      {/* PARETI */}
-      <mesh position={[0, 2.5, -5]}> {/* Fondo */}
-        <boxGeometry args={[10, 5, 0.1]} />
-        <meshStandardMaterial color="#c7d2fe" />
-      </mesh>
-      <mesh position={[-5, 2.5, 0]} rotation={[0, Math.PI / 2, 0]}> {/* Sinistra */}
-        <boxGeometry args={[10, 5, 0.1]} />
-        <meshStandardMaterial color="#a5b4fc" />
-      </mesh>
-      <mesh position={[5, 2.5, 0]} rotation={[0, -Math.PI / 2, 0]}> {/* Destra */}
-        <boxGeometry args={[10, 5, 0.1]} />
-        <meshStandardMaterial color="#a5b4fc" />
-      </mesh>
+      <mesh position={[0, 2.5, -5]}> <boxGeometry args={[10, 5, 0.1]} /> <meshStandardMaterial color="#c7d2fe" /> </mesh>
+      <mesh position={[-5, 2.5, 0]} rotation={[0, Math.PI / 2, 0]}> <boxGeometry args={[10, 5, 0.1]} /> <meshStandardMaterial color="#a5b4fc" /> </mesh>
+      <mesh position={[5, 2.5, 0]} rotation={[0, -Math.PI / 2, 0]}> <boxGeometry args={[10, 5, 0.1]} /> <meshStandardMaterial color="#a5b4fc" /> </mesh>
 
-      {/* PET */}
       <Billboard position={[0, 1, 0]} follow={true} lockX={false} lockY={false} lockZ={false}>
         <Html transform center pointerEvents="none" zIndexRange={[100, 0]}>
           <div className="text-[100px] drop-shadow-2xl animate-bounce-slow select-none filter drop-shadow-lg">
@@ -128,15 +153,13 @@ const Room3D = ({ decor, petEmoji }) => {
           </div>
         </Html>
       </Billboard>
-      {/* Ombra Pet */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
         <circleGeometry args={[0.8, 32]} />
         <meshBasicMaterial color="black" opacity={0.2} transparent />
       </mesh>
 
-      {/* OGGETTI DECORATIVI */}
       {Object.values(decor).map((item) => {
-        if (item.isFlat) { // Tappeti
+        if (item.isFlat) { 
           return (
             <group key={item.id} position={item.pos} rotation={[-Math.PI/2, 0, 0]}>
                <Html transform center pointerEvents="none" zIndexRange={[0, 0]}>
@@ -145,7 +168,7 @@ const Room3D = ({ decor, petEmoji }) => {
             </group>
           );
         }
-        if (item.isWall) { // Quadri
+        if (item.isWall) { 
            return (
             <group key={item.id} position={item.pos}>
                <Html transform center pointerEvents="none">
@@ -154,7 +177,7 @@ const Room3D = ({ decor, petEmoji }) => {
             </group>
            );
         }
-        return ( // Oggetti 3D
+        return ( 
           <Billboard key={item.id} position={item.pos} follow={true}>
             <Html transform center pointerEvents="none">
               <div style={{ fontSize: `${item.scale * 40}px`, filter: 'drop-shadow(0 10px 5px rgba(0,0,0,0.3))' }}>
@@ -313,16 +336,73 @@ export default function App() {
   const [petThought, setPetThought] = useState("Ciao!");
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
+  const [user, setUser] = useState(null);
+  const [updateAvailable, setUpdateAvailable] = useState(false); 
+
+  // --- INIT FIREBASE E CARICAMENTO ---
+  useEffect(() => {
+    if (auth) {
+      const initAuth = async () => {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      };
+      initAuth();
+      const unsubscribe = onAuthStateChanged(auth, setUser);
+      return () => unsubscribe();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!db || !user) return;
+    const fetchSecrets = async () => {
+      try {
+        const secretRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'secrets');
+        const secretSnap = await getDoc(secretRef);
+        if (secretSnap.exists() && secretSnap.data().gemini_key) {
+             aiTutor.setApiKey(secretSnap.data().gemini_key);
+        }
+      } catch (e) { console.error(e); }
+    };
+    fetchSecrets();
+  }, [user]);
+
+  // --- CONTROLLO VERSIONE ---
+  const checkVersion = async () => {
+    try {
+      const response = await fetch(`${REPO_BASE}/version.json?t=${new Date().getTime()}`);
+      if (!response.ok) return;
+      const data = await response.json();
+      console.log(`App: ${APP_VERSION}, Server: ${data.version}`);
+      if (data.version !== APP_VERSION) setUpdateAvailable(true);
+    } catch (e) { console.log(e); }
+  };
 
   useEffect(() => {
     const saved = localStorage.getItem('rifugio_v6_three');
     if (saved) { try { setGameState(prev => ({...prev, ...JSON.parse(saved)})); } catch(e){} }
     
     window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); setDeferredPrompt(e); });
+    
+    checkVersion();
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === 'visible') checkVersion(); });
+
     if ('serviceWorker' in navigator) navigator.serviceWorker.register(`${REPO_BASE}/sw.js`).catch(() => {});
   }, []);
 
   useEffect(() => { localStorage.setItem('rifugio_v6_three', JSON.stringify(gameState)); }, [gameState]);
+
+  // --- AGGIORNAMENTO ---
+  const handleUpdateApp = () => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for(let registration of registrations) registration.unregister();
+        window.location.reload(true);
+      });
+    } else window.location.reload(true);
+  };
 
   // TTS
   const speak = useCallback((text) => {
@@ -425,6 +505,16 @@ export default function App() {
           </GlassCard>
 
           <div className="flex gap-2">
+            {/* TASTO AGGIORNA APP */}
+            {updateAvailable && (
+              <button 
+                onClick={handleUpdateApp} 
+                className="p-3 rounded-full bg-green-500 text-white shadow-lg animate-pulse transition active:scale-95"
+              >
+                <RefreshCw size={20} className="animate-spin" />
+              </button>
+            )}
+
             {deferredPrompt && (
               <button onClick={handleInstallClick} className="p-3 rounded-full bg-indigo-600 text-white shadow-lg animate-pulse active:scale-95">
                 <Download size={20} />
@@ -468,6 +558,11 @@ export default function App() {
               <ActionButton label="Cura" icon={Activity} gradient="bg-gradient-to-br from-rose-400 to-red-600" onClick={() => startAction('heal')} />
             </div>
           </GlassCard>
+        </div>
+        
+        {/* Versione App (Discreta) */}
+        <div className="absolute bottom-1 right-2 text-[8px] text-white/20 pointer-events-none">
+          v{APP_VERSION}
         </div>
       </div>
 
