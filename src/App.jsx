@@ -14,7 +14,15 @@ const REPO_BASE = '/games-rifugioIncantato';
 const APP_VERSION = import.meta.env.PACKAGE_VERSION || '1.0.0';
 
 // Inizializzazione Firebase sicura
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyDZp4rC_LYox1YlBW8eDqsycmqH08i4zP8",
+  authDomain: "nutriai-f081c.firebaseapp.com",
+  projectId: "nutriai-f081c",
+  storageBucket: "nutriai-f081c.firebasestorage.app",
+  messagingSenderId: "841982374698",
+  appId: "1:841982374698:web:0289d0aac7d926b07ce453"
+};
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 let auth = null;
