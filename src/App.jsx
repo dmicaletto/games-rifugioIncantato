@@ -10,7 +10,7 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "firebase/firestor
 
 // --- CONFIGURAZIONE SISTEMA ---
 const REPO_BASE = '/games-rifugioIncantato';
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.1.1'; // Incrementato versione per fix
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -111,10 +111,11 @@ const INITIAL_GAME_STATE = {
     dragon: { stats: { health: 100, hunger: 100, happiness: 100 }, status: "normal" }
   },
   decor: { room: {}, forest: {} },
+  difficulty: { mathLevel: 1, streak: 0 }, // Assicura che questo esista sempre
   lastLogin: new Date().toISOString()
 };
 
-// --- MOTORE AI POTENZIATO ---
+// --- MOTORE AI ---
 class GeminiTutor {
   constructor() { 
     this.history = []; 
@@ -123,7 +124,7 @@ class GeminiTutor {
 
   setApiKey(key) { 
     this.apiKey = key; 
-    console.log("✅ Gemini API Key caricata (lunghezza: " + key.length + ")");
+    console.log("✅ Gemini API Key caricata");
   }
 
   recordAnswer(type, problem, isCorrect, timeTaken) { 
@@ -131,35 +132,22 @@ class GeminiTutor {
     if (this.history.length > 30) this.history.shift(); 
   }
 
-  // Genera problema usando Gemini o Fallback Locale
   async generateProblem(level, type) {
-    // Fallback locale se no key o errore
     const localProblem = this.generateLocalProblem(level, type);
-
-    if (!this.apiKey) {
-      console.warn("⚠️ Nessuna API Key, uso generatore locale.");
-      return localProblem;
-    }
+    if (!this.apiKey) return localProblem;
 
     try {
-      // Analisi errori recenti per il prompt
       const errors = this.history.filter(h => !h.isCorrect).map(h => h.problem).slice(-5);
-      const focusText = errors.length > 0 ? `L'utente ha sbagliato recentemente: ${errors.join(', ')}. Genera qualcosa di simile per farla esercitare.` : "L'utente sta andando bene, aumenta leggermente la difficoltà.";
+      const focusText = errors.length > 0 ? `L'utente ha sbagliato recentemente: ${errors.join(', ')}.` : "Aumenta leggermente la difficoltà.";
 
       const prompt = `
-        Sei un tutor di matematica per una bambina di scuola elementare (Livello Gioco: ${level}).
-        Genera un singolo problema matematico divertente.
-        
-        Tipo richiesto: ${type === 'play' ? 'Moltiplicazioni/Tabelline' : type === 'food' ? 'Somme/Sottrazioni' : 'Divisioni o Logica semplice'}.
-        Difficoltà: Proporzionale al livello ${level} (1=Facile, 5=Medio, 10=Difficile).
+        Sei un tutor di matematica per bambini (Livello: ${level}).
+        Genera un problema matematico.
+        Tipo: ${type === 'play' ? 'Moltiplicazioni' : type === 'food' ? 'Somme/Sottrazioni' : 'Divisioni'}.
         Focus: ${focusText}
-        
-        IMPORTANTE: 
-        - Nel 30% dei casi, invece di un'operazione (es "5 + 5"), proponi un brevissimo problema a parole (es. "Luca ha 2 mele e ne trova 3. Quante mele ha?").
-        - Rispondi SOLO in formato JSON valido: { "text": "testo del problema", "result": numero_intero_risultato }
+        Rispondi SOLO JSON: { "text": "problema", "result": numero }
       `;
 
-      console.log("🤖 Chiedo a Gemini...");
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${this.apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -171,64 +159,48 @@ class GeminiTutor {
 
       const data = await response.json();
       if (data.error) throw new Error(data.error.message);
-      
-      const content = JSON.parse(data.candidates[0].content.parts[0].text);
-      console.log("🤖 Gemini ha risposto:", content);
-      return content;
+      return JSON.parse(data.candidates[0].content.parts[0].text);
 
     } catch (e) {
-      console.error("❌ Errore Gemini (uso locale):", e);
+      console.error("Errore Gemini, uso fallback locale", e);
       return localProblem;
     }
   }
 
-  // Generatore Locale (Matematica di base)
   generateLocalProblem(level, type) {
     const rnd = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
     let n1, n2, operator, result;
-    
-    // Scaling difficoltà locale
     const maxNum = 10 + (level * 5); 
 
-    if (type === 'food') { // Somme/Sottrazioni
+    if (type === 'food') {
       operator = Math.random() > 0.5 ? '+' : '-';
-      n1 = rnd(1, maxNum);
-      n2 = rnd(1, maxNum);
+      n1 = rnd(1, maxNum); n2 = rnd(1, maxNum);
       if (operator === '-' && n1 < n2) [n1, n2] = [n2, n1];
       result = operator === '+' ? n1 + n2 : n1 - n2;
-    } 
-    else if (type === 'play') { // Moltiplicazioni
+    } else if (type === 'play') {
       operator = '×';
-      const maxTab = Math.min(10, 2 + level);
-      n1 = rnd(1, maxTab);
-      n2 = rnd(1, 10);
+      n1 = rnd(1, Math.min(10, 2 + level)); n2 = rnd(1, 10);
       result = n1 * n2;
-    } 
-    else { // Divisioni (Healing)
+    } else {
       operator = ':';
-      n2 = rnd(2, Math.min(9, 1 + level));
-      result = rnd(1, 10);
-      n1 = n2 * result; // Garantisce divisione intera
+      n2 = rnd(2, Math.min(9, 1 + level)); result = rnd(1, 10);
+      n1 = n2 * result;
     }
-
     return { text: `${n1} ${operator} ${n2}`, result };
   }
 
   async evaluateLevel(currentLevel) { 
-    // Qui potremmo chiedere a Gemini se promuovere l'utente, 
-    // ma per ora manteniamo la logica locale basata sulle stelle per semplicità di gameplay.
     const recent = this.history.slice(-5);
     if (recent.length < 5) return currentLevel;
     const correctCount = recent.filter(h => h.isCorrect).length;
     if (correctCount <= 1) return Math.max(1, currentLevel - 1);
-    // Nota: Il level up principale avviene accumulando XP, questo serve per aggiustare il "mathLevel" interno
     if (correctCount === 5) return Math.min(20, currentLevel + 1);
     return currentLevel;
   }
 }
 const aiTutor = new GeminiTutor();
 
-// --- SCENA 3D (Invariata) ---
+// --- SCENA 3D ---
 const Room3D = ({ decor, petEmoji, envId }) => {
   const env = ENVIRONMENTS[envId] || ENVIRONMENTS.room;
   return (
@@ -409,8 +381,6 @@ const MathModal = ({ isOpen, type, difficultyLevel, rewardItem, onClose, onSucce
       setAnswer("");
       setFeedback(null);
       setProblem(null);
-      
-      // Chiamata asincrona al generatore
       aiTutor.generateProblem(difficultyLevel, type).then(prob => {
         setProblem(prob);
         setIsLoading(false);
@@ -502,13 +472,12 @@ export default function App() {
     }
   }, []);
 
+  // CARICAMENTO ROBUSTO DEI DATI
   useEffect(() => {
     if (!db || !user) return;
     getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'secrets')).then(snap => {
       if(snap.exists() && snap.data().gemini_key) {
         aiTutor.setApiKey(snap.data().gemini_key);
-        // Notifica visiva (opzionale)
-        console.log("Gemini Key trovata!");
       }
     });
 
@@ -520,12 +489,28 @@ export default function App() {
           ...INITIAL_GAME_STATE,
           ...remoteData,
           levelSystem: { ...INITIAL_GAME_STATE.levelSystem, ...(remoteData.levelSystem || {}) },
-          petsData: { ...INITIAL_GAME_STATE.petsData, ...(remoteData.petsData || {}) }
+          petsData: { ...INITIAL_GAME_STATE.petsData, ...(remoteData.petsData || {}) },
+          difficulty: { ...INITIAL_GAME_STATE.difficulty, ...(remoteData.difficulty || {}) } // Merge per evitare undefined
         }));
       }
     });
     return () => unsub();
   }, [user]);
+
+  // Caricamento da LocalStorage (Fallback iniziale)
+  useEffect(() => {
+    const saved = localStorage.getItem('rifugio_v6_three');
+    if (saved) { 
+      try { 
+        const parsed = JSON.parse(saved);
+        setGameState(prev => ({
+          ...INITIAL_GAME_STATE,
+          ...parsed,
+          difficulty: { ...INITIAL_GAME_STATE.difficulty, ...(parsed.difficulty || {}) } // Merge per evitare undefined
+        })); 
+      } catch(e){} 
+    }
+  }, []);
 
   useEffect(() => {
     if (!user || !db) return;
@@ -535,6 +520,10 @@ export default function App() {
     }, 2000);
     return () => clearTimeout(timeout);
   }, [gameState, user]);
+
+  useEffect(() => {
+    localStorage.setItem('rifugio_v6_three', JSON.stringify(gameState));
+  }, [gameState]);
 
   useEffect(() => {
     window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); setDeferredPrompt(e); });
@@ -575,7 +564,7 @@ export default function App() {
     }
   };
 
-  const handleSuccess = (type, time) => {
+  const handleSuccess = async (type, time) => {
     setGameState(prev => {
       const activePet = prev.activePetId;
       const petStats = { ...prev.petsData[activePet].stats };
@@ -608,6 +597,16 @@ export default function App() {
         unlockedPets
       };
     });
+    
+    // Aggiornamento Difficoltà
+    const newLevel = await aiTutor.evaluateLevel(gameState.difficulty?.mathLevel || 1);
+    if (newLevel !== (gameState.difficulty?.mathLevel || 1)) {
+        setGameState(prev => ({
+            ...prev,
+            difficulty: { ...prev.difficulty, mathLevel: newLevel }
+        }));
+    }
+
     speak("Evviva!");
   };
 
@@ -646,6 +645,9 @@ export default function App() {
   const activeEnvId = activePetInfo.defaultEnv;
   const activeEnv = ENVIRONMENTS[activeEnvId];
   const activeDecor = gameState.decor[activeEnvId] || {};
+
+  // Protezione null pointer per difficultyLevel
+  const currentMathLevel = gameState.difficulty?.mathLevel || 1;
 
   return (
     <div className={`fixed inset-0 ${activeEnv.colors.bg} font-sans text-slate-800 flex flex-col overflow-hidden select-none transition-colors duration-1000`}>
@@ -730,7 +732,7 @@ export default function App() {
         </div>
       </div>
 
-      <MathModal isOpen={['food', 'play', 'heal'].includes(activeModal)} type={activeModal} difficultyLevel={gameState.difficulty.mathLevel} rewardItem={currentReward} onClose={() => setActiveModal(null)} onSuccess={handleSuccess} />
+      <MathModal isOpen={['food', 'play', 'heal'].includes(activeModal)} type={activeModal} difficultyLevel={currentMathLevel} rewardItem={currentReward} onClose={() => setActiveModal(null)} onSuccess={handleSuccess} />
       <ShopModal isOpen={activeModal === 'shop'} onClose={() => setActiveModal(null)} wallet={gameState.wallet} inventory={gameState.inventory} onBuy={handleBuy} level={gameState.levelSystem.level} />
       <MapModal isOpen={activeModal === 'map'} onClose={() => setActiveModal(null)} currentEnv={activeEnvId} unlockedPets={gameState.unlockedPets} onTravel={handleTravel} />
     </div>
