@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Html, Billboard } from '@react-three/drei';
-import { Heart, Smile, Utensils, Gamepad2, User, Activity, Sparkles, Zap, Volume2, VolumeX, ShoppingBag, Store, Coins, Download, Rotate3d, RefreshCw, Map as MapIcon, Lock } from 'lucide-react';
+import { Heart, Smile, Utensils, Gamepad2, User, Activity, Sparkles, Zap, Volume2, VolumeX, ShoppingBag, Store, Coins, Download, Rotate3d, RefreshCw, Map as MapIcon, Lock, X } from 'lucide-react';
 
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from "firebase/app";
@@ -10,7 +10,8 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "firebase/firestor
 
 // --- CONFIGURAZIONE SISTEMA ---
 const REPO_BASE = '/games-rifugioIncantato';
-const APP_VERSION = '1.1.1'; // Incrementato versione per fix
+// Versione fissata staticamente per compatibilità
+const APP_VERSION = '1.2.0';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -21,7 +22,7 @@ const firebaseConfig = {
   messagingSenderId: "841982374698",
   appId: "1:841982374698:web:0289d0aac7d926b07ce453"
 };
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'rifugio-incantato-app-id';
 
 let auth = null;
 let db = null;
@@ -47,7 +48,7 @@ const ENVIRONMENTS = {
   forest: { 
     id: 'forest', 
     name: "Foresta Incantata", 
-    colors: { floor: "#4ade80", wall: "#7dd3fc", bg: "bg-emerald-900" }, 
+    colors: { floor: "#4ade80", wall: "#7dd3fc", bg: "bg-emerald-900" }, // Pavimento erba, Muri cielo
     gridColor: 0x22c55e
   }
 };
@@ -82,9 +83,11 @@ const MEDICINES = [
 
 const MARKET_ITEMS = {
   decor: [
+    // Livello Base
     { id: 'rug_rainbow', name: "Tappeto", emoji: "🌈", price: 150, type: 'rug', pos: [0, 0.05, 0], scale: 3, isFlat: true, levelReq: 1 },
     { id: 'plant', name: "Pianta", emoji: "🪴", price: 80, type: 'plant', pos: [-3, 0.8, -3], scale: 2, levelReq: 1 },
     { id: 'lamp', name: "Lampada", emoji: "🌟", price: 120, type: 'lamp', pos: [3, 2, -3.5], scale: 1.5, levelReq: 1 },
+    // Livello Avanzato (Foresta/Lusso)
     { id: 'throne', name: "Trono", emoji: "👑", price: 500, type: 'chair', pos: [0, 1, -4], scale: 2.5, levelReq: 5 },
     { id: 'fountain', name: "Fontana", emoji: "⛲", price: 400, type: 'center', pos: [3, 1, 3], scale: 2.5, levelReq: 3 },
     { id: 'chest', name: "Tesoro", emoji: "💎", price: 250, type: 'storage', pos: [-3, 0.5, 3], scale: 1.5, levelReq: 2 },
@@ -98,20 +101,38 @@ const MARKET_ITEMS = {
   ]
 };
 
-// --- STATO INIZIALE ---
+// --- STATO INIZIALE AGGIORNATO ---
 const INITIAL_GAME_STATE = {
-  user: { name: "Piccola Maga" },
+  userInfo: { // Nuovo oggetto profilo completo
+    name: "",
+    surname: "",
+    age: 9,
+    gender: "F",
+    nickname: "Piccola Maga"
+  },
+  // Retrocompatibilità per vecchi salvataggi
+  user: { name: "Piccola Maga" }, 
+  
   levelSystem: { level: 1, currentStars: 0, nextLevelStars: 50 },
   wallet: { money: 100 },
   inventory: [],
-  unlockedPets: ['fox'],
-  activePetId: 'fox',
-  petsData: {
-    fox: { stats: { health: 80, hunger: 60, happiness: 90 }, status: "normal" },
-    dragon: { stats: { health: 100, hunger: 100, happiness: 100 }, status: "normal" }
+  unlockedPets: ['fox'], // Lista ID pet sbloccati
+  activePetId: 'fox',    // Pet attualmente visibile
+  petsData: {            // Stato separato per ogni pet
+    fox: { 
+      stats: { health: 80, hunger: 60, happiness: 90 },
+      status: "normal"
+    },
+    dragon: {
+      stats: { health: 100, hunger: 100, happiness: 100 },
+      status: "normal"
+    }
   },
-  decor: { room: {}, forest: {} },
-  difficulty: { mathLevel: 1, streak: 0 }, // Assicura che questo esista sempre
+  decor: { // Decorazioni per ambiente
+    room: {},
+    forest: {}
+  },
+  difficulty: { mathLevel: 1, streak: 0 },
   lastLogin: new Date().toISOString()
 };
 
@@ -138,14 +159,21 @@ class GeminiTutor {
 
     try {
       const errors = this.history.filter(h => !h.isCorrect).map(h => h.problem).slice(-5);
-      const focusText = errors.length > 0 ? `L'utente ha sbagliato recentemente: ${errors.join(', ')}.` : "Aumenta leggermente la difficoltà.";
+      const focusText = errors.length > 0 ? `L'utente ha sbagliato recentemente: ${errors.join(', ')}. Insisti su questo.` : "Aumenta leggermente la difficoltà.";
 
       const prompt = `
         Sei un tutor di matematica per bambini (Livello: ${level}).
         Genera un problema matematico.
-        Tipo: ${type === 'play' ? 'Moltiplicazioni' : type === 'food' ? 'Somme/Sottrazioni' : 'Divisioni'}.
-        Focus: ${focusText}
-        Rispondi SOLO JSON: { "text": "problema", "result": numero }
+        
+        Tipo richiesto: ${type === 'play' ? 'Moltiplicazioni' : type === 'food' ? 'Somme/Sottrazioni' : 'Divisioni'}.
+        
+        ISTRUZIONI IMPORTANTI:
+        1. Varia molto il formato. 
+        2. Nel 50% dei casi genera OPERAZIONI SECCHE (es. "12 + 15", "5 x 4").
+        3. Nel 50% dei casi genera BREVI PROBLEMI A PAROLE (es. "Hai 5 mele, ne mangi 2. Quante ne restano?").
+        4. Focus adattivo: ${focusText}
+        
+        Rispondi SOLO JSON valido: { "text": "testo domanda", "result": numero_intero }
       `;
 
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${this.apiKey}`, {
@@ -251,8 +279,8 @@ const Room3D = ({ decor, petEmoji, envId }) => {
 };
 
 // --- UI COMPONENTS ---
-const GlassCard = ({ children, className = "" }) => (
-  <div className={`bg-white/30 backdrop-blur-md border border-white/50 shadow-xl rounded-3xl ${className}`}>
+const GlassCard = ({ children, className = "", onClick }) => (
+  <div onClick={onClick} className={`bg-white/30 backdrop-blur-md border border-white/50 shadow-xl rounded-3xl ${className} ${onClick ? 'cursor-pointer hover:bg-white/40 transition-colors' : ''}`}>
     {children}
   </div>
 );
@@ -289,6 +317,70 @@ const ActionButton = ({ icon: Icon, label, color, gradient, onClick, disabled })
 );
 
 // --- MODALI ---
+
+// NUOVA MODALE PROFILO
+const ProfileModal = ({ isOpen, onClose, userInfo, onSave }) => {
+  const [data, setData] = useState(userInfo);
+
+  useEffect(() => { if(isOpen) setData(userInfo); }, [isOpen, userInfo]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" style={{zIndex: 200}}>
+      <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl relative border-4 border-white">
+        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400"><X /></button>
+        
+        <h3 className="text-2xl font-black text-indigo-900 mb-4 flex items-center gap-2">
+          <User /> Profilo
+        </h3>
+        
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase">Nickname (Nome nel gioco)</label>
+            <input 
+              type="text" 
+              value={data.nickname || ""} 
+              onChange={e => setData({...data, nickname: e.target.value})}
+              className="w-full p-3 rounded-xl border-2 border-indigo-100 font-bold text-indigo-900" 
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase">Nome</label>
+              <input type="text" value={data.name || ""} onChange={e => setData({...data, name: e.target.value})} className="w-full p-2 rounded-xl border-2 border-slate-200" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase">Cognome</label>
+              <input type="text" value={data.surname || ""} onChange={e => setData({...data, surname: e.target.value})} className="w-full p-2 rounded-xl border-2 border-slate-200" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase">Età</label>
+              <input type="number" value={data.age || ""} onChange={e => setData({...data, age: e.target.value})} className="w-full p-2 rounded-xl border-2 border-slate-200" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase">Genere</label>
+              <select value={data.gender || "F"} onChange={e => setData({...data, gender: e.target.value})} className="w-full p-2 rounded-xl border-2 border-slate-200 bg-white">
+                <option value="F">Femmina</option>
+                <option value="M">Maschio</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <button 
+          onClick={() => { onSave(data); onClose(); }} 
+          className="w-full mt-6 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg active:scale-95"
+        >
+          Salva Profilo
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const ShopModal = ({ isOpen, onClose, wallet, inventory, onBuy, level }) => {
   if (!isOpen) return null;
   return (
@@ -300,7 +392,7 @@ const ShopModal = ({ isOpen, onClose, wallet, inventory, onBuy, level }) => {
             <Coins size={16} className="text-emerald-600" />
             <span className="font-bold text-emerald-800">{Math.floor(wallet.money)}</span>
           </div>
-          <button onClick={onClose} className="font-bold text-slate-400 p-2">X</button>
+          <button onClick={onClose} className="font-bold text-slate-400 p-2"><X /></button>
         </div>
         <div className="overflow-y-auto p-4 flex-1">
           {['decor', 'toys'].map(cat => (
@@ -338,9 +430,10 @@ const MapModal = ({ isOpen, onClose, currentEnv, unlockedPets, onTravel }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center z-50 p-6" style={{zIndex: 200}}>
-      <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl">
+      <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl relative">
+        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400"><X /></button>
         <h3 className="text-2xl font-black text-center text-indigo-900 mb-6 flex justify-center items-center gap-2">
-          <MapIcon /> Mappa del Mondo
+          <MapIcon /> Mappa
         </h3>
         <div className="space-y-4">
           <div onClick={() => onTravel('room', 'fox')} className={`p-4 rounded-2xl border-4 cursor-pointer transition-all flex items-center gap-4 ${currentEnv === 'room' ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>
@@ -361,7 +454,6 @@ const MapModal = ({ isOpen, onClose, currentEnv, unlockedPets, onTravel }) => {
             {currentEnv === 'forest' && <span className="ml-auto text-emerald-600 font-bold">📍 Qui</span>}
           </div>
         </div>
-        <button onClick={onClose} className="mt-6 w-full py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100">Chiudi</button>
       </div>
     </div>
   );
@@ -406,8 +498,14 @@ const MathModal = ({ isOpen, type, difficultyLevel, rewardItem, onClose, onSucce
 
   return (
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" style={{zIndex: 200}}>
-      <div className={`bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl transform transition-all ${feedback === 'wrong' ? 'animate-shake border-4 border-red-300' : 'border-4 border-white'}`}>
-        <div className="text-center mb-6">
+      <div className={`bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl relative transform transition-all ${feedback === 'wrong' ? 'animate-shake border-4 border-red-300' : 'border-4 border-white'}`}>
+        
+        {/* CLOSE BUTTON */}
+        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 transition-colors">
+          <X size={24} />
+        </button>
+
+        <div className="text-center mb-6 pt-2">
           <h3 className="text-xl font-bold text-indigo-900">Risolvi per {rewardItem?.emoji}</h3>
         </div>
         
@@ -488,9 +586,10 @@ export default function App() {
         setGameState(prev => ({
           ...INITIAL_GAME_STATE,
           ...remoteData,
+          userInfo: { ...INITIAL_GAME_STATE.userInfo, ...(remoteData.userInfo || {}) }, // Merge profilo
           levelSystem: { ...INITIAL_GAME_STATE.levelSystem, ...(remoteData.levelSystem || {}) },
           petsData: { ...INITIAL_GAME_STATE.petsData, ...(remoteData.petsData || {}) },
-          difficulty: { ...INITIAL_GAME_STATE.difficulty, ...(remoteData.difficulty || {}) } // Merge per evitare undefined
+          difficulty: { ...INITIAL_GAME_STATE.difficulty, ...(remoteData.difficulty || {}) } 
         }));
       }
     });
@@ -506,7 +605,8 @@ export default function App() {
         setGameState(prev => ({
           ...INITIAL_GAME_STATE,
           ...parsed,
-          difficulty: { ...INITIAL_GAME_STATE.difficulty, ...(parsed.difficulty || {}) } // Merge per evitare undefined
+          userInfo: { ...INITIAL_GAME_STATE.userInfo, ...(parsed.userInfo || {}) },
+          difficulty: { ...INITIAL_GAME_STATE.difficulty, ...(parsed.difficulty || {}) } 
         })); 
       } catch(e){} 
     }
@@ -627,6 +727,14 @@ export default function App() {
     }
   };
 
+  // Aggiornamento Profilo
+  const handleUpdateProfile = (newInfo) => {
+    setGameState(prev => ({
+      ...prev,
+      userInfo: newInfo
+    }));
+  };
+
   useEffect(() => {
     const interval = setInterval(() => {
       if (activeModal) return;
@@ -649,6 +757,9 @@ export default function App() {
   // Protezione null pointer per difficultyLevel
   const currentMathLevel = gameState.difficulty?.mathLevel || 1;
 
+  // Nome visualizzato: usa il nickname o fallback su "Piccola Maga"
+  const displayName = gameState.userInfo?.nickname || gameState.user?.name || "Piccola Maga";
+
   return (
     <div className={`fixed inset-0 ${activeEnv.colors.bg} font-sans text-slate-800 flex flex-col overflow-hidden select-none transition-colors duration-1000`}>
       <div className="absolute inset-0 z-0">
@@ -660,10 +771,14 @@ export default function App() {
 
       <div className="absolute inset-0 pointer-events-none flex flex-col justify-between pb-6 z-10">
         <div className="px-4 py-4 flex justify-between items-start pointer-events-auto">
-          <GlassCard className="flex items-center gap-3 px-4 py-2 rounded-2xl !border-white/40 min-w-[140px]">
+          {/* HEADER PROFILO (Cliccabile) */}
+          <GlassCard 
+            onClick={() => setActiveModal('profile')}
+            className="flex items-center gap-3 px-4 py-2 rounded-2xl !border-white/40 min-w-[140px] cursor-pointer hover:bg-white/40 transition-colors"
+          >
             <div className="bg-indigo-100 p-1.5 rounded-full"><User size={16} className="text-indigo-600"/></div>
             <div className="flex flex-col w-full">
-              <span className="font-bold text-sm text-indigo-900">{gameState.user.name}</span>
+              <span className="font-bold text-sm text-indigo-900">{displayName}</span>
               <LevelBar current={gameState.levelSystem.currentStars} max={gameState.levelSystem.nextLevelStars} />
               <div className="text-[9px] text-indigo-500 font-bold text-right mt-0.5">Lvl {gameState.levelSystem.level}</div>
             </div>
@@ -735,6 +850,7 @@ export default function App() {
       <MathModal isOpen={['food', 'play', 'heal'].includes(activeModal)} type={activeModal} difficultyLevel={currentMathLevel} rewardItem={currentReward} onClose={() => setActiveModal(null)} onSuccess={handleSuccess} />
       <ShopModal isOpen={activeModal === 'shop'} onClose={() => setActiveModal(null)} wallet={gameState.wallet} inventory={gameState.inventory} onBuy={handleBuy} level={gameState.levelSystem.level} />
       <MapModal isOpen={activeModal === 'map'} onClose={() => setActiveModal(null)} currentEnv={activeEnvId} unlockedPets={gameState.unlockedPets} onTravel={handleTravel} />
+      <ProfileModal isOpen={activeModal === 'profile'} onClose={() => setActiveModal(null)} userInfo={gameState.userInfo} onSave={handleUpdateProfile} />
     </div>
   );
 }
