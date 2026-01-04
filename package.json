@@ -1,7 +1,7 @@
 {
   "name": "il-rifugio-incantato",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.2.0",
   "type": "module",
   "homepage": "https://dmicaletto.github.io/games-rifugioIncantato/",
   "scripts": {
@@ -19,12 +19,15 @@
     "react-dom": "^18.2.0",
     "three": "^0.160.0",
     "@react-three/fiber": "^8.15.16",
-    "@react-three/drei": "^9.99.0"
+    "@react-three/drei": "^9.99.0",
+    "@capacitor/core": "^5.7.0",
+    "@capacitor/android": "^5.7.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
     "@vitejs/plugin-react": "^4.2.1",
+    "@capacitor/cli": "^5.7.0",
     "autoprefixer": "^10.4.19",
     "eslint": "^8.57.0",
     "eslint-plugin-react": "^7.34.1",
