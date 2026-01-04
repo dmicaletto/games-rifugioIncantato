@@ -30,8 +30,11 @@ jobs:
       - name: Build Web App
         run: npm run build
 
-      - name: Add Android Platform
-        run: npx cap add android
+      - name: Setup Android Platform
+        run: |
+          npx cap add android
+          cd android
+          chmod +x gradlew
 
       - name: Build APK
         run: cd android && ./gradlew assembleDebug
