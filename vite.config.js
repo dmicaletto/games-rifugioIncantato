@@ -6,7 +6,7 @@ import packageJson from './package.json'
 export default defineConfig({
   plugins: [react()],
   // IMPORTANTE: Assicurati che questo sia il nome ESATTO del tuo repository
-  base: '/games-rifugioIncantato/',
+  base: './',
   define: {
     // Rendiamo la versione accessibile globalmente nell'app
     'import.meta.env.PACKAGE_VERSION': JSON.stringify(packageJson.version)
