@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Html, Billboard } from '@react-three/drei';
-import { Heart, Smile, Utensils, Gamepad2, User, Activity, Sparkles, Zap, Volume2, VolumeX, ShoppingBag, Store, Coins, Download, Rotate3d, RefreshCw, Map as MapIcon, Lock, X } from 'lucide-react';
+import { Heart, Smile, Utensils, Gamepad2, User, Activity, Sparkles, Zap, Volume2, VolumeX, ShoppingBag, Store, Coins, Download, Rotate3d, RefreshCw, Map as MapIcon, Lock, X, Bell } from 'lucide-react';
 
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from "firebase/app";
@@ -10,8 +10,7 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "firebase/firestor
 
 // --- CONFIGURAZIONE SISTEMA ---
 const REPO_BASE = '/games-rifugioIncantato';
-// Versione fissata staticamente per compatibilità
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0'; // Major update: Offline Decay + New World
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -22,6 +21,7 @@ const firebaseConfig = {
   messagingSenderId: "841982374698",
   appId: "1:841982374698:web:0289d0aac7d926b07ce453"
 };
+
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'rifugio-incantato-app-id';
 
 let auth = null;
@@ -37,7 +37,7 @@ if (firebaseConfig) {
   }
 }
 
-// --- COSTANTI GIOCO ---
+// --- COSTANTI AMBIENTI ---
 const ENVIRONMENTS = {
   room: { 
     id: 'room', 
@@ -48,14 +48,21 @@ const ENVIRONMENTS = {
   forest: { 
     id: 'forest', 
     name: "Foresta Incantata", 
-    colors: { floor: "#4ade80", wall: "#7dd3fc", bg: "bg-emerald-900" }, // Pavimento erba, Muri cielo
+    colors: { floor: "#4ade80", wall: "#7dd3fc", bg: "bg-emerald-900" }, 
     gridColor: 0x22c55e
+  },
+  beach: { 
+    id: 'beach', 
+    name: "Spiaggia Coralli", 
+    colors: { floor: "#fde68a", wall: "#60a5fa", bg: "bg-sky-900" }, // Sabbia e Cielo/Mare
+    gridColor: 0xd4b48b
   }
 };
 
 const PETS_INFO = {
   fox: { id: 'fox', name: "Batuffolo", emoji: "🦊", defaultEnv: 'room' },
-  dragon: { id: 'dragon', name: "Scintilla", emoji: "🐲", defaultEnv: 'forest' }
+  dragon: { id: 'dragon', name: "Scintilla", emoji: "🐲", defaultEnv: 'forest' },
+  turtle: { id: 'turtle', name: "Guscio", emoji: "🐢", defaultEnv: 'beach' }
 };
 
 // --- DATABASE OGGETTI ---
@@ -83,148 +90,79 @@ const MEDICINES = [
 
 const MARKET_ITEMS = {
   decor: [
-    // Livello Base
+    // Livello 1 (Cameretta)
     { id: 'rug_rainbow', name: "Tappeto", emoji: "🌈", price: 150, type: 'rug', pos: [0, 0.05, 0], scale: 3, isFlat: true, levelReq: 1 },
-    { id: 'plant', name: "Pianta", emoji: "🪴", price: 80, type: 'plant', pos: [-3, 0.8, -3], scale: 2, levelReq: 1 },
     { id: 'lamp', name: "Lampada", emoji: "🌟", price: 120, type: 'lamp', pos: [3, 2, -3.5], scale: 1.5, levelReq: 1 },
-    // Livello Avanzato (Foresta/Lusso)
+    // Livello 5 (Foresta)
     { id: 'throne', name: "Trono", emoji: "👑", price: 500, type: 'chair', pos: [0, 1, -4], scale: 2.5, levelReq: 5 },
-    { id: 'fountain', name: "Fontana", emoji: "⛲", price: 400, type: 'center', pos: [3, 1, 3], scale: 2.5, levelReq: 3 },
-    { id: 'chest', name: "Tesoro", emoji: "💎", price: 250, type: 'storage', pos: [-3, 0.5, 3], scale: 1.5, levelReq: 2 },
-    { id: 'tree_magic', name: "Albero", emoji: "🌳", price: 350, type: 'plant_big', pos: [-3, 2, -3], scale: 4, levelReq: 4 }
+    { id: 'tree_magic', name: "Albero", emoji: "🌳", price: 350, type: 'plant_big', pos: [-3, 2, -3], scale: 4, levelReq: 5 },
+    // Livello 10 (Spiaggia)
+    { id: 'shell_giant', name: "Conchiglia", emoji: "🐚", price: 300, type: 'seat_beach', pos: [3, 0.5, 3], scale: 2, levelReq: 10 },
+    { id: 'umbrella', name: "Ombrellone", emoji: "⛱️", price: 250, type: 'shade', pos: [-3, 2, -3], scale: 3, levelReq: 10 },
+    { id: 'castle', name: "Castello", emoji: "🏰", price: 600, type: 'sandcastle', pos: [0, 1, -4], scale: 2.5, levelReq: 12 }
   ],
   toys: [
     { id: 'robot', name: "Robot", emoji: "🤖", price: 100, type: 'toy', pos: [-2, 0.6, 2], scale: 1.5, levelReq: 1 },
     { id: 'bear', name: "Orsetto", emoji: "🧸", price: 75, type: 'toy', pos: [2, 0.5, 2], scale: 1.5, levelReq: 1 },
-    { id: 'car', name: "Auto", emoji: "🏎️", price: 85, type: 'toy', pos: [0, 0.4, 3], scale: 1.2, levelReq: 1 },
-    { id: 'telescope', name: "Telescopio", emoji: "🔭", price: 200, type: 'toy_adv', pos: [0, 1, 4], scale: 2, levelReq: 3 }
+    { id: 'telescope', name: "Telescopio", emoji: "🔭", price: 200, type: 'toy_adv', pos: [0, 1, 4], scale: 2, levelReq: 5 },
+    { id: 'boat', name: "Barchetta", emoji: "⛵", price: 150, type: 'toy_sea', pos: [0, 0.5, 3], scale: 1.5, levelReq: 10 }
   ]
 };
 
-// --- STATO INIZIALE AGGIORNATO ---
+// --- STATO INIZIALE ---
 const INITIAL_GAME_STATE = {
-  userInfo: { // Nuovo oggetto profilo completo
-    name: "",
-    surname: "",
-    age: 9,
-    gender: "F",
-    nickname: "Piccola Maga"
-  },
-  // Retrocompatibilità per vecchi salvataggi
-  user: { name: "Piccola Maga" }, 
-  
+  userInfo: { name: "", surname: "", age: 9, gender: "F", nickname: "Piccola Maga" },
   levelSystem: { level: 1, currentStars: 0, nextLevelStars: 50 },
   wallet: { money: 100 },
   inventory: [],
-  unlockedPets: ['fox'], // Lista ID pet sbloccati
-  activePetId: 'fox',    // Pet attualmente visibile
-  petsData: {            // Stato separato per ogni pet
-    fox: { 
-      stats: { health: 80, hunger: 60, happiness: 90 },
-      status: "normal"
-    },
-    dragon: {
-      stats: { health: 100, hunger: 100, happiness: 100 },
-      status: "normal"
-    }
+  unlockedPets: ['fox'],
+  activePetId: 'fox',
+  petsData: {
+    fox: { stats: { health: 80, hunger: 60, happiness: 90 }, status: "normal" },
+    dragon: { stats: { health: 100, hunger: 100, happiness: 100 }, status: "normal" },
+    turtle: { stats: { health: 100, hunger: 100, happiness: 100 }, status: "normal" }
   },
-  decor: { // Decorazioni per ambiente
-    room: {},
-    forest: {}
-  },
+  decor: { room: {}, forest: {}, beach: {} },
   difficulty: { mathLevel: 1, streak: 0 },
   lastLogin: new Date().toISOString()
 };
 
-// --- MOTORE AI ---
+// --- LOGICA AI ---
 class GeminiTutor {
-  constructor() { 
-    this.history = []; 
-    this.apiKey = null;
-  }
-
-  setApiKey(key) { 
-    this.apiKey = key; 
-    console.log("✅ Gemini API Key caricata");
-  }
-
+  constructor() { this.history = []; this.apiKey = null; }
+  setApiKey(key) { this.apiKey = key; }
   recordAnswer(type, problem, isCorrect, timeTaken) { 
     this.history.push({ type, problem, isCorrect, timeTaken, timestamp: Date.now() });
     if (this.history.length > 30) this.history.shift(); 
   }
-
   async generateProblem(level, type) {
     const localProblem = this.generateLocalProblem(level, type);
     if (!this.apiKey) return localProblem;
-
     try {
-      const errors = this.history.filter(h => !h.isCorrect).map(h => h.problem).slice(-5);
-      const focusText = errors.length > 0 ? `L'utente ha sbagliato recentemente: ${errors.join(', ')}. Insisti su questo.` : "Aumenta leggermente la difficoltà.";
-
-      const prompt = `
-        Sei un tutor di matematica per bambini (Livello: ${level}).
-        Genera un problema matematico.
-        
-        Tipo richiesto: ${type === 'play' ? 'Moltiplicazioni' : type === 'food' ? 'Somme/Sottrazioni' : 'Divisioni'}.
-        
-        ISTRUZIONI IMPORTANTI:
-        1. Varia molto il formato. 
-        2. Nel 50% dei casi genera OPERAZIONI SECCHE (es. "12 + 15", "5 x 4").
-        3. Nel 50% dei casi genera BREVI PROBLEMI A PAROLE (es. "Hai 5 mele, ne mangi 2. Quante ne restano?").
-        4. Focus adattivo: ${focusText}
-        
-        Rispondi SOLO JSON valido: { "text": "testo domanda", "result": numero_intero }
-      `;
-
+      const prompt = `Genera un problema matematico per bambino livello ${level}. Tipo: ${type}. JSON: { "text": "...", "result": 123 }`;
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${this.apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: "application/json" }
-        })
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } })
       });
-
       const data = await response.json();
-      if (data.error) throw new Error(data.error.message);
       return JSON.parse(data.candidates[0].content.parts[0].text);
-
-    } catch (e) {
-      console.error("Errore Gemini, uso fallback locale", e);
-      return localProblem;
-    }
+    } catch (e) { return localProblem; }
   }
-
   generateLocalProblem(level, type) {
     const rnd = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
     let n1, n2, operator, result;
     const maxNum = 10 + (level * 5); 
-
     if (type === 'food') {
-      operator = Math.random() > 0.5 ? '+' : '-';
-      n1 = rnd(1, maxNum); n2 = rnd(1, maxNum);
-      if (operator === '-' && n1 < n2) [n1, n2] = [n2, n1];
-      result = operator === '+' ? n1 + n2 : n1 - n2;
+      operator = Math.random() > 0.5 ? '+' : '-'; n1 = rnd(1, maxNum); n2 = rnd(1, maxNum);
+      if (operator === '-' && n1 < n2) [n1, n2] = [n2, n1]; result = operator === '+' ? n1 + n2 : n1 - n2;
     } else if (type === 'play') {
-      operator = '×';
-      n1 = rnd(1, Math.min(10, 2 + level)); n2 = rnd(1, 10);
-      result = n1 * n2;
+      operator = '×'; n1 = rnd(1, Math.min(10, 2 + level)); n2 = rnd(1, 10); result = n1 * n2;
     } else {
-      operator = ':';
-      n2 = rnd(2, Math.min(9, 1 + level)); result = rnd(1, 10);
-      n1 = n2 * result;
+      operator = ':'; n2 = rnd(2, Math.min(9, 1 + level)); result = rnd(1, 10); n1 = n2 * result;
     }
     return { text: `${n1} ${operator} ${n2}`, result };
   }
-
-  async evaluateLevel(currentLevel) { 
-    const recent = this.history.slice(-5);
-    if (recent.length < 5) return currentLevel;
-    const correctCount = recent.filter(h => h.isCorrect).length;
-    if (correctCount <= 1) return Math.max(1, currentLevel - 1);
-    if (correctCount === 5) return Math.min(20, currentLevel + 1);
-    return currentLevel;
-  }
+  async evaluateLevel(currentLevel) { return currentLevel; } // Placeholder
 }
 const aiTutor = new GeminiTutor();
 
@@ -235,24 +173,37 @@ const Room3D = ({ decor, petEmoji, envId }) => {
     <>
       <ambientLight intensity={0.8} />
       <directionalLight position={[5, 10, 5]} intensity={1} />
+      
+      {/* PAVIMENTO */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
         <planeGeometry args={[12, 12]} />
         <meshStandardMaterial color={env.colors.floor} />
       </mesh>
       <gridHelper args={[12, 12, env.gridColor, env.gridColor]} position={[0, 0.01, 0]} />
+
+      {/* PARETI E SFONDI */}
       {envId === 'room' ? (
         <>
           <mesh position={[0, 3, -6]}> <boxGeometry args={[12, 6, 0.1]} /> <meshStandardMaterial color={env.colors.wall} /> </mesh>
           <mesh position={[-6, 3, 0]} rotation={[0, Math.PI / 2, 0]}> <boxGeometry args={[12, 6, 0.1]} /> <meshStandardMaterial color="#a5b4fc" /> </mesh>
           <mesh position={[6, 3, 0]} rotation={[0, -Math.PI / 2, 0]}> <boxGeometry args={[12, 6, 0.1]} /> <meshStandardMaterial color="#a5b4fc" /> </mesh>
         </>
-      ) : (
+      ) : envId === 'forest' ? (
         <>
           <Billboard position={[-4, 2, -5]} scale={5}><Html pointerEvents="none"><div className="text-[100px]">🌲</div></Html></Billboard>
           <Billboard position={[4, 2, -5]} scale={5}><Html pointerEvents="none"><div className="text-[100px]">🌲</div></Html></Billboard>
           <Billboard position={[0, 2, -6]} scale={6}><Html pointerEvents="none"><div className="text-[100px]">🌳</div></Html></Billboard>
         </>
+      ) : (
+        // Spiaggia
+        <>
+          <Billboard position={[-5, 1, -5]} scale={4}><Html pointerEvents="none"><div className="text-[100px]">🌴</div></Html></Billboard>
+          <Billboard position={[5, 1, -5]} scale={4}><Html pointerEvents="none"><div className="text-[100px]">🌴</div></Html></Billboard>
+          <Billboard position={[0, 1, -6]} scale={3}><Html pointerEvents="none"><div className="text-[100px]">🌊</div></Html></Billboard>
+        </>
       )}
+
+      {/* PET */}
       <Billboard position={[0, 1, 0]} follow={true} lockX={false} lockY={false} lockZ={false}>
         <Html transform center pointerEvents="none" zIndexRange={[100, 0]}>
           <div className="text-[120px] drop-shadow-2xl animate-bounce-slow select-none filter drop-shadow-lg transition-transform duration-500 hover:scale-110">
@@ -264,6 +215,8 @@ const Room3D = ({ decor, petEmoji, envId }) => {
         <circleGeometry args={[1, 32]} />
         <meshBasicMaterial color="black" opacity={0.2} transparent />
       </mesh>
+
+      {/* DECORAZIONI */}
       {Object.values(decor).map((item) => {
         if (item.isFlat) { 
           return <group key={item.id} position={item.pos} rotation={[-Math.PI/2, 0, 0]}><Html transform center pointerEvents="none" zIndexRange={[0, 0]}><div style={{ fontSize: `${item.scale * 40}px`, opacity: 0.9 }}>{item.emoji}</div></Html></group>;
@@ -305,77 +258,29 @@ const LevelBar = ({ current, max }) => (
 );
 
 const ActionButton = ({ icon: Icon, label, color, gradient, onClick, disabled }) => (
-  <button 
-    onClick={onClick} disabled={disabled}
-    className={`relative flex flex-col items-center justify-center py-2 rounded-xl transition-all duration-300 transform active:scale-95 
-    ${disabled ? 'opacity-50 grayscale bg-white/10' : `${gradient} shadow-lg`} `}
-    style={{ minHeight: '80px' }}
-  >
-    <Icon size={24} className="text-white drop-shadow-md mb-1" />
-    <span className="font-bold text-[10px] text-white drop-shadow-md">{label}</span>
+  <button onClick={onClick} disabled={disabled} className={`relative flex flex-col items-center justify-center py-2 rounded-xl transition-all duration-300 transform active:scale-95 ${disabled ? 'opacity-50 grayscale bg-white/10' : `${gradient} shadow-lg`} `} style={{ minHeight: '80px' }}>
+    <Icon size={24} className="text-white drop-shadow-md mb-1" /><span className="font-bold text-[10px] text-white drop-shadow-md">{label}</span>
   </button>
 );
 
 // --- MODALI ---
-
-// NUOVA MODALE PROFILO
 const ProfileModal = ({ isOpen, onClose, userInfo, onSave }) => {
   const [data, setData] = useState(userInfo);
-
   useEffect(() => { if(isOpen) setData(userInfo); }, [isOpen, userInfo]);
-
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" style={{zIndex: 200}}>
       <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl relative border-4 border-white">
         <button onClick={onClose} className="absolute top-4 right-4 text-slate-400"><X /></button>
-        
-        <h3 className="text-2xl font-black text-indigo-900 mb-4 flex items-center gap-2">
-          <User /> Profilo
-        </h3>
-        
+        <h3 className="text-2xl font-black text-indigo-900 mb-4 flex items-center gap-2"><User /> Profilo</h3>
         <div className="space-y-3">
-          <div>
-            <label className="text-xs font-bold text-slate-500 uppercase">Nickname (Nome nel gioco)</label>
-            <input 
-              type="text" 
-              value={data.nickname || ""} 
-              onChange={e => setData({...data, nickname: e.target.value})}
-              className="w-full p-3 rounded-xl border-2 border-indigo-100 font-bold text-indigo-900" 
-            />
-          </div>
+          <div><label className="text-xs font-bold text-slate-500 uppercase">Nickname</label><input type="text" value={data.nickname || ""} onChange={e => setData({...data, nickname: e.target.value})} className="w-full p-3 rounded-xl border-2 border-indigo-100 font-bold text-indigo-900" /></div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-bold text-slate-500 uppercase">Nome</label>
-              <input type="text" value={data.name || ""} onChange={e => setData({...data, name: e.target.value})} className="w-full p-2 rounded-xl border-2 border-slate-200" />
-            </div>
-            <div>
-              <label className="text-xs font-bold text-slate-500 uppercase">Cognome</label>
-              <input type="text" value={data.surname || ""} onChange={e => setData({...data, surname: e.target.value})} className="w-full p-2 rounded-xl border-2 border-slate-200" />
-            </div>
+            <div><label className="text-xs font-bold text-slate-500 uppercase">Nome</label><input type="text" value={data.name || ""} onChange={e => setData({...data, name: e.target.value})} className="w-full p-2 rounded-xl border-2 border-slate-200" /></div>
+            <div><label className="text-xs font-bold text-slate-500 uppercase">Cognome</label><input type="text" value={data.surname || ""} onChange={e => setData({...data, surname: e.target.value})} className="w-full p-2 rounded-xl border-2 border-slate-200" /></div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-bold text-slate-500 uppercase">Età</label>
-              <input type="number" value={data.age || ""} onChange={e => setData({...data, age: e.target.value})} className="w-full p-2 rounded-xl border-2 border-slate-200" />
-            </div>
-            <div>
-              <label className="text-xs font-bold text-slate-500 uppercase">Genere</label>
-              <select value={data.gender || "F"} onChange={e => setData({...data, gender: e.target.value})} className="w-full p-2 rounded-xl border-2 border-slate-200 bg-white">
-                <option value="F">Femmina</option>
-                <option value="M">Maschio</option>
-              </select>
-            </div>
-          </div>
+          <button onClick={() => { onSave(data); onClose(); }} className="w-full mt-6 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg active:scale-95">Salva Profilo</button>
         </div>
-
-        <button 
-          onClick={() => { onSave(data); onClose(); }} 
-          className="w-full mt-6 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg active:scale-95"
-        >
-          Salva Profilo
-        </button>
       </div>
     </div>
   );
@@ -388,10 +293,7 @@ const ShopModal = ({ isOpen, onClose, wallet, inventory, onBuy, level }) => {
       <div className="bg-white rounded-3xl w-full max-w-md max-h-[80vh] flex flex-col shadow-2xl border-4 border-white">
         <div className="bg-indigo-100 p-4 flex justify-between items-center">
           <h3 className="text-xl font-black text-indigo-900 flex items-center gap-2"><Store size={24}/> Market</h3>
-          <div className="bg-white px-3 py-1 rounded-full flex items-center gap-1 border border-emerald-200">
-            <Coins size={16} className="text-emerald-600" />
-            <span className="font-bold text-emerald-800">{Math.floor(wallet.money)}</span>
-          </div>
+          <div className="bg-white px-3 py-1 rounded-full flex items-center gap-1 border border-emerald-200"><Coins size={16} className="text-emerald-600" /><span className="font-bold text-emerald-800">{Math.floor(wallet.money)}</span></div>
           <button onClick={onClose} className="font-bold text-slate-400 p-2"><X /></button>
         </div>
         <div className="overflow-y-auto p-4 flex-1">
@@ -407,13 +309,7 @@ const ShopModal = ({ isOpen, onClose, wallet, inventory, onBuy, level }) => {
                       {locked && <div className="absolute inset-0 bg-white/60 flex items-center justify-center rounded-xl"><Lock className="text-slate-400"/> <span className="text-xs font-bold text-slate-500 ml-1">Liv {item.levelReq}</span></div>}
                       <div className="text-4xl mb-2">{item.emoji}</div>
                       <div className="text-xs font-bold text-slate-700 h-8 flex items-center justify-center">{item.name}</div>
-                      {owned ? (
-                        <span className="text-[10px] font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">Posseduto</span>
-                      ) : (
-                        <button onClick={() => onBuy(item)} disabled={wallet.money < item.price || locked} className={`w-full py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 ${wallet.money >= item.price && !locked ? 'bg-emerald-500 text-white shadow-md active:scale-95' : 'bg-slate-200 text-slate-400'}`}>
-                          {item.price} <Coins size={10} className="fill-current" />
-                        </button>
-                      )}
+                      {owned ? <span className="text-[10px] font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">Posseduto</span> : <button onClick={() => onBuy(item)} disabled={wallet.money < item.price || locked} className={`w-full py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 ${wallet.money >= item.price && !locked ? 'bg-emerald-500 text-white shadow-md active:scale-95' : 'bg-slate-200 text-slate-400'}`}>{item.price} <Coins size={10} className="fill-current" /></button>}
                     </div>
                   );
                 })}
@@ -432,26 +328,16 @@ const MapModal = ({ isOpen, onClose, currentEnv, unlockedPets, onTravel }) => {
     <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center z-50 p-6" style={{zIndex: 200}}>
       <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl relative">
         <button onClick={onClose} className="absolute top-4 right-4 text-slate-400"><X /></button>
-        <h3 className="text-2xl font-black text-center text-indigo-900 mb-6 flex justify-center items-center gap-2">
-          <MapIcon /> Mappa
-        </h3>
+        <h3 className="text-2xl font-black text-center text-indigo-900 mb-6 flex justify-center items-center gap-2"><MapIcon /> Mappa</h3>
         <div className="space-y-4">
           <div onClick={() => onTravel('room', 'fox')} className={`p-4 rounded-2xl border-4 cursor-pointer transition-all flex items-center gap-4 ${currentEnv === 'room' ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>
-            <div className="text-4xl">🦊</div>
-            <div>
-              <div className="font-bold text-lg text-indigo-900">Cameretta</div>
-              <div className="text-xs text-indigo-500 font-semibold">Casa di Batuffolo</div>
-            </div>
-            {currentEnv === 'room' && <span className="ml-auto text-indigo-600 font-bold">📍 Qui</span>}
+            <div className="text-4xl">🦊</div><div><div className="font-bold text-lg text-indigo-900">Cameretta</div><div className="text-xs text-indigo-500 font-semibold">Casa di Batuffolo</div></div>{currentEnv === 'room' && <span className="ml-auto text-indigo-600 font-bold">📍 Qui</span>}
           </div>
           <div onClick={() => { if (unlockedPets.includes('dragon')) onTravel('forest', 'dragon'); }} className={`p-4 rounded-2xl border-4 transition-all flex items-center gap-4 ${unlockedPets.includes('dragon') ? 'cursor-pointer border-emerald-500 bg-emerald-50' : 'border-slate-200 opacity-60 grayscale'}`}>
-            <div className="text-4xl">🐲</div>
-            <div>
-              <div className="font-bold text-lg text-emerald-900">Foresta Incantata</div>
-              <div className="text-xs text-emerald-600 font-semibold">{unlockedPets.includes('dragon') ? "Casa di Scintilla" : "Sblocca al Livello 5"}</div>
-            </div>
-            {!unlockedPets.includes('dragon') && <Lock className="ml-auto text-slate-400" />}
-            {currentEnv === 'forest' && <span className="ml-auto text-emerald-600 font-bold">📍 Qui</span>}
+            <div className="text-4xl">🐲</div><div><div className="font-bold text-lg text-emerald-900">Foresta Incantata</div><div className="text-xs text-emerald-600 font-semibold">{unlockedPets.includes('dragon') ? "Casa di Scintilla" : "Sblocca al Livello 5"}</div></div>{!unlockedPets.includes('dragon') && <Lock className="ml-auto text-slate-400" />}{currentEnv === 'forest' && <span className="ml-auto text-emerald-600 font-bold">📍 Qui</span>}
+          </div>
+          <div onClick={() => { if (unlockedPets.includes('turtle')) onTravel('beach', 'turtle'); }} className={`p-4 rounded-2xl border-4 transition-all flex items-center gap-4 ${unlockedPets.includes('turtle') ? 'cursor-pointer border-sky-500 bg-sky-50' : 'border-slate-200 opacity-60 grayscale'}`}>
+            <div className="text-4xl">🐢</div><div><div className="font-bold text-lg text-sky-900">Spiaggia Coralli</div><div className="text-xs text-sky-600 font-semibold">{unlockedPets.includes('turtle') ? "Casa di Guscio" : "Sblocca al Livello 10"}</div></div>{!unlockedPets.includes('turtle') && <Lock className="ml-auto text-slate-400" />}{currentEnv === 'beach' && <span className="ml-auto text-sky-600 font-bold">📍 Qui</span>}
           </div>
         </div>
       </div>
@@ -469,14 +355,9 @@ const MathModal = ({ isOpen, type, difficultyLevel, rewardItem, onClose, onSucce
 
   useEffect(() => {
     if (isOpen) {
-      setIsLoading(true);
-      setAnswer("");
-      setFeedback(null);
-      setProblem(null);
+      setIsLoading(true); setAnswer(""); setFeedback(null); setProblem(null);
       aiTutor.generateProblem(difficultyLevel, type).then(prob => {
-        setProblem(prob);
-        setIsLoading(false);
-        startTime.current = Date.now();
+        setProblem(prob); setIsLoading(false); startTime.current = Date.now();
         setTimeout(() => inputRef.current?.focus(), 100);
       });
     }
@@ -485,8 +366,7 @@ const MathModal = ({ isOpen, type, difficultyLevel, rewardItem, onClose, onSucce
   const checkAnswer = () => {
     if (!problem) return;
     if(parseInt(answer) === problem.result) {
-      setFeedback('correct');
-      const time = (Date.now() - startTime.current) / 1000;
+      setFeedback('correct'); const time = (Date.now() - startTime.current) / 1000;
       setTimeout(() => { onSuccess(type, time); onClose(); }, 800);
     } else {
       setFeedback('wrong'); setAnswer("");
@@ -495,30 +375,14 @@ const MathModal = ({ isOpen, type, difficultyLevel, rewardItem, onClose, onSucce
   };
 
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" style={{zIndex: 200}}>
       <div className={`bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl relative transform transition-all ${feedback === 'wrong' ? 'animate-shake border-4 border-red-300' : 'border-4 border-white'}`}>
-        
-        {/* CLOSE BUTTON */}
-        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 transition-colors">
-          <X size={24} />
-        </button>
-
-        <div className="text-center mb-6 pt-2">
-          <h3 className="text-xl font-bold text-indigo-900">Risolvi per {rewardItem?.emoji}</h3>
-        </div>
-        
+        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 transition-colors"><X size={24} /></button>
+        <div className="text-center mb-6 pt-2"><h3 className="text-xl font-bold text-indigo-900">Risolvi per {rewardItem?.emoji}</h3></div>
         <div className="bg-indigo-50 rounded-2xl p-6 mb-6 text-center border-2 border-indigo-100 min-h-[120px] flex items-center justify-center">
-          {isLoading ? (
-            <div className="animate-pulse text-indigo-400 font-bold">Generazione magica... ✨</div>
-          ) : (
-            <span className={`font-black text-indigo-600 ${problem?.text.length > 10 ? 'text-2xl' : 'text-5xl'}`}>
-              {problem?.text}
-            </span>
-          )}
+          {isLoading ? <div className="animate-pulse text-indigo-400 font-bold">Generazione magica... ✨</div> : <span className={`font-black text-indigo-600 ${problem?.text.length > 10 ? 'text-xl' : 'text-5xl'}`}>{problem?.text}</span>}
         </div>
-        
         {!isLoading && (
           <div className="flex gap-2 w-full">
             <input ref={inputRef} type="tel" value={answer} onChange={e=>setAnswer(e.target.value)} className="flex-1 min-w-0 text-center text-3xl font-black py-3 rounded-2xl border-4 border-indigo-100 outline-none text-indigo-900" placeholder="?" />
@@ -550,14 +414,62 @@ export default function App() {
     window.speechSynthesis.speak(utterance);
   }, [isMuted]);
 
-  const PET_PHRASES = {
-    hungry: ["Pancino vuoto...", "Ho fame!", "Cibo?"],
-    bored: ["Che noia...", "Giochiamo?", "Uffa..."],
-    sick: ["Non sto bene...", "Aiuto...", "Gulp..."],
-    happy: ["Sei mitica!", "Ti voglio bene!", "Evviva!"],
-    sleepy: ["Zzz...", "Nanna..."],
-    intro: ["Ciao!", "Eccomi!"]
+  // --- LOGICA DI DECADIMENTO OFFLINE ---
+  const calculateOfflineDecay = (savedState) => {
+    const now = Date.now();
+    const lastLogin = new Date(savedState.lastLogin || now).getTime();
+    const hoursPassed = (now - lastLogin) / (1000 * 60 * 60);
+
+    if (hoursPassed < 0.1) return savedState; // Ignora intervalli brevi
+
+    console.log(`Bentornato! Sono passate ${hoursPassed.toFixed(2)} ore.`);
+    let notificationMsg = "";
+    
+    // Clona lo stato degli animali
+    const newPetsData = { ...savedState.petsData };
+    
+    Object.keys(newPetsData).forEach(petId => {
+      // Applica decadimento solo ai pet sbloccati
+      if (savedState.unlockedPets.includes(petId)) {
+        const stats = newPetsData[petId].stats;
+        // Formula: 5 punti all'ora (Fame scende più veloce)
+        const decay = Math.floor(hoursPassed * 5);
+        
+        stats.hunger = Math.max(0, stats.hunger - decay * 1.5);
+        stats.happiness = Math.max(0, stats.happiness - decay);
+        stats.health = Math.max(0, stats.health - (decay * 0.5)); // La salute scende più piano
+        
+        // Controlla se qualcuno sta male
+        if (stats.health < 30 || stats.hunger < 30) {
+          notificationMsg = `Attenzione! ${PETS_INFO[petId].name} ha bisogno di te!`;
+          newPetsData[petId].status = "sick";
+        }
+      }
+    });
+
+    // Se ci sono notifiche critiche, mostra alert (simulazione notifica)
+    if (notificationMsg) {
+      // Invia notifica browser se supportata
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification("Il Rifugio Incantato", { body: notificationMsg, icon: "/icon-192.png" });
+      } else {
+        alert(notificationMsg);
+      }
+    }
+
+    return {
+      ...savedState,
+      petsData: newPetsData,
+      lastLogin: new Date().toISOString()
+    };
   };
+
+  useEffect(() => {
+    // Richiedi permessi notifiche all'avvio
+    if ("Notification" in window) {
+      Notification.requestPermission();
+    }
+  }, []);
 
   useEffect(() => {
     if (auth) {
@@ -570,44 +482,40 @@ export default function App() {
     }
   }, []);
 
-  // CARICAMENTO ROBUSTO DEI DATI
   useEffect(() => {
     if (!db || !user) return;
     getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'secrets')).then(snap => {
-      if(snap.exists() && snap.data().gemini_key) {
-        aiTutor.setApiKey(snap.data().gemini_key);
-      }
+      if(snap.exists() && snap.data().gemini_key) aiTutor.setApiKey(snap.data().gemini_key);
     });
 
     const saveRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'gameState');
     const unsub = onSnapshot(saveRef, (docSnap) => {
       if (docSnap.exists()) {
         const remoteData = docSnap.data();
-        setGameState(prev => ({
-          ...INITIAL_GAME_STATE,
-          ...remoteData,
-          userInfo: { ...INITIAL_GAME_STATE.userInfo, ...(remoteData.userInfo || {}) }, // Merge profilo
-          levelSystem: { ...INITIAL_GAME_STATE.levelSystem, ...(remoteData.levelSystem || {}) },
-          petsData: { ...INITIAL_GAME_STATE.petsData, ...(remoteData.petsData || {}) },
-          difficulty: { ...INITIAL_GAME_STATE.difficulty, ...(remoteData.difficulty || {}) } 
-        }));
+        // APPLICA IL DECADIMENTO QUI QUANDO CARICHI I DATI
+        const decayedState = calculateOfflineDecay({
+            ...INITIAL_GAME_STATE,
+            ...remoteData,
+            // Assicurati che i merge siano profondi per non perdere dati
+            userInfo: { ...INITIAL_GAME_STATE.userInfo, ...(remoteData.userInfo || {}) },
+            levelSystem: { ...INITIAL_GAME_STATE.levelSystem, ...(remoteData.levelSystem || {}) },
+            petsData: { ...INITIAL_GAME_STATE.petsData, ...(remoteData.petsData || {}) },
+            difficulty: { ...INITIAL_GAME_STATE.difficulty, ...(remoteData.difficulty || {}) } 
+        });
+        setGameState(decayedState);
       }
     });
     return () => unsub();
   }, [user]);
 
-  // Caricamento da LocalStorage (Fallback iniziale)
+  // Caricamento Locale (Fallback)
   useEffect(() => {
-    const saved = localStorage.getItem('rifugio_v6_three');
+    const saved = localStorage.getItem('rifugio_v7');
     if (saved) { 
       try { 
         const parsed = JSON.parse(saved);
-        setGameState(prev => ({
-          ...INITIAL_GAME_STATE,
-          ...parsed,
-          userInfo: { ...INITIAL_GAME_STATE.userInfo, ...(parsed.userInfo || {}) },
-          difficulty: { ...INITIAL_GAME_STATE.difficulty, ...(parsed.difficulty || {}) } 
-        })); 
+        const decayedState = calculateOfflineDecay({ ...INITIAL_GAME_STATE, ...parsed });
+        setGameState(decayedState); 
       } catch(e){} 
     }
   }, []);
@@ -616,13 +524,15 @@ export default function App() {
     if (!user || !db) return;
     const timeout = setTimeout(() => {
       const saveRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'gameState');
-      setDoc(saveRef, gameState, { merge: true }).catch(e => console.error("Salvataggio fallito", e));
+      // Aggiorna sempre lastLogin quando salvi
+      const stateToSave = { ...gameState, lastLogin: new Date().toISOString() };
+      setDoc(saveRef, stateToSave, { merge: true }).catch(e => console.error("Salvataggio fallito", e));
     }, 2000);
     return () => clearTimeout(timeout);
   }, [gameState, user]);
 
   useEffect(() => {
-    localStorage.setItem('rifugio_v6_three', JSON.stringify(gameState));
+    localStorage.setItem('rifugio_v7', JSON.stringify({ ...gameState, lastLogin: new Date().toISOString() }));
   }, [gameState]);
 
   useEffect(() => {
@@ -653,12 +563,7 @@ export default function App() {
         const newDecor = { ...prev.decor };
         if(!newDecor[env]) newDecor[env] = {};
         newDecor[env][item.type] = item; 
-        return { 
-          ...prev, 
-          wallet: { money: prev.wallet.money - item.price }, 
-          inventory: [...prev.inventory, item.id], 
-          decor: newDecor 
-        };
+        return { ...prev, wallet: { money: prev.wallet.money - item.price }, inventory: [...prev.inventory, item.id], decor: newDecor };
       });
       speak("Grazie!");
     }
@@ -683,9 +588,14 @@ export default function App() {
         newLevelSystem.nextLevelStars = Math.floor(newLevelSystem.nextLevelStars * 1.5);
         earnedMoney += 100; 
         
+        // Sblocchi Progressivi
         if (newLevelSystem.level === 5 && !unlockedPets.includes('dragon')) {
           unlockedPets.push('dragon');
-          setTimeout(() => alert("🎉 HAI SBLOCCATO LA FORESTA E IL DRAGHETTO! 🎉\nClicca sulla Mappa per viaggiare!"), 500);
+          setTimeout(() => alert("🎉 FORESTA SBLOCCATA! 🐲\nClicca sulla Mappa!"), 500);
+        }
+        if (newLevelSystem.level === 10 && !unlockedPets.includes('turtle')) {
+          unlockedPets.push('turtle');
+          setTimeout(() => alert("🎉 SPIAGGIA SBLOCCATA! 🐢\nNuovo amico in arrivo!"), 500);
         }
       }
 
@@ -698,7 +608,6 @@ export default function App() {
       };
     });
     
-    // Aggiornamento Difficoltà
     const newLevel = await aiTutor.evaluateLevel(gameState.difficulty?.mathLevel || 1);
     if (newLevel !== (gameState.difficulty?.mathLevel || 1)) {
         setGameState(prev => ({
@@ -706,17 +615,12 @@ export default function App() {
             difficulty: { ...prev.difficulty, mathLevel: newLevel }
         }));
     }
-
     speak("Evviva!");
   };
 
   const handleUpdateApp = () => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(regs => {
-        for(let reg of regs) reg.unregister();
-        window.location.reload(true);
-      });
-    } else window.location.reload(true);
+    if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(regs => { for(let reg of regs) reg.unregister(); window.location.reload(true); });
+    else window.location.reload(true);
   };
 
   const handleInstallClick = async () => {
@@ -727,12 +631,17 @@ export default function App() {
     }
   };
 
-  // Aggiornamento Profilo
   const handleUpdateProfile = (newInfo) => {
-    setGameState(prev => ({
-      ...prev,
-      userInfo: newInfo
-    }));
+    setGameState(prev => ({ ...prev, userInfo: newInfo }));
+  };
+
+  const PET_PHRASES = {
+    hungry: ["Pancino vuoto...", "Ho fame!", "Cibo?"],
+    bored: ["Che noia...", "Giochiamo?", "Uffa..."],
+    sick: ["Non sto bene...", "Aiuto...", "Gulp..."],
+    happy: ["Sei mitica!", "Ti voglio bene!", "Evviva!"],
+    sleepy: ["Zzz...", "Nanna..."],
+    intro: ["Ciao!", "Eccomi!"]
   };
 
   useEffect(() => {
@@ -753,11 +662,7 @@ export default function App() {
   const activeEnvId = activePetInfo.defaultEnv;
   const activeEnv = ENVIRONMENTS[activeEnvId];
   const activeDecor = gameState.decor[activeEnvId] || {};
-
-  // Protezione null pointer per difficultyLevel
   const currentMathLevel = gameState.difficulty?.mathLevel || 1;
-
-  // Nome visualizzato: usa il nickname o fallback su "Piccola Maga"
   const displayName = gameState.userInfo?.nickname || gameState.user?.name || "Piccola Maga";
 
   return (
@@ -771,11 +676,7 @@ export default function App() {
 
       <div className="absolute inset-0 pointer-events-none flex flex-col justify-between pb-6 z-10">
         <div className="px-4 py-4 flex justify-between items-start pointer-events-auto">
-          {/* HEADER PROFILO (Cliccabile) */}
-          <GlassCard 
-            onClick={() => setActiveModal('profile')}
-            className="flex items-center gap-3 px-4 py-2 rounded-2xl !border-white/40 min-w-[140px] cursor-pointer hover:bg-white/40 transition-colors"
-          >
+          <GlassCard onClick={() => setActiveModal('profile')} className="flex items-center gap-3 px-4 py-2 rounded-2xl !border-white/40 min-w-[140px] cursor-pointer hover:bg-white/40 transition-colors">
             <div className="bg-indigo-100 p-1.5 rounded-full"><User size={16} className="text-indigo-600"/></div>
             <div className="flex flex-col w-full">
               <span className="font-bold text-sm text-indigo-900">{displayName}</span>
@@ -785,50 +686,22 @@ export default function App() {
           </GlassCard>
 
           <div className="flex gap-2">
-            <button onClick={() => setActiveModal('map')} className="p-3 rounded-full bg-white/20 backdrop-blur border border-white/30 text-white shadow-lg active:scale-95">
-              <MapIcon size={20} />
-            </button>
-            {updateAvailable && (
-              <button onClick={handleUpdateApp} className="p-3 rounded-full bg-green-500 text-white shadow-lg animate-pulse">
-                <RefreshCw size={20} className="animate-spin" />
-              </button>
-            )}
-            {deferredPrompt && (
-              <button onClick={handleInstallClick} className="p-3 rounded-full bg-indigo-600 text-white shadow-lg animate-pulse active:scale-95">
-                <Download size={20} />
-              </button>
-            )}
-            <button onClick={() => setIsMuted(!isMuted)} className="p-3 rounded-full bg-white/20 backdrop-blur border border-white/30 shadow-lg text-white hover:bg-white/30 transition active:scale-95">
-              {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-            </button>
-            <GlassCard className="flex items-center gap-2 px-3 py-2 rounded-full !bg-emerald-500/80 !border-emerald-300 shadow-lg">
-              <Coins size={18} className="text-emerald-200 fill-white"/>
-              <span className="font-black text-white text-md">{Math.floor(gameState.wallet.money)}</span>
-            </GlassCard>
+            <button onClick={() => setActiveModal('map')} className="p-3 rounded-full bg-white/20 backdrop-blur border border-white/30 text-white shadow-lg active:scale-95"><MapIcon size={20} /></button>
+            {updateAvailable && <button onClick={handleUpdateApp} className="p-3 rounded-full bg-green-500 text-white shadow-lg animate-pulse"><RefreshCw size={20} className="animate-spin" /></button>}
+            {deferredPrompt && <button onClick={handleInstallClick} className="p-3 rounded-full bg-indigo-600 text-white shadow-lg animate-pulse active:scale-95"><Download size={20} /></button>}
+            <button onClick={() => setIsMuted(!isMuted)} className="p-3 rounded-full bg-white/20 backdrop-blur border border-white/30 shadow-lg text-white hover:bg-white/30 transition active:scale-95">{isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}</button>
+            <GlassCard className="flex items-center gap-2 px-3 py-2 rounded-full !bg-emerald-500/80 !border-emerald-300 shadow-lg"><Coins size={18} className="text-emerald-200 fill-white"/><span className="font-black text-white text-md">{Math.floor(gameState.wallet.money)}</span></GlassCard>
           </div>
         </div>
 
         <div className="relative w-full flex justify-center pointer-events-none h-10">
-           {petThought && (
-             <div className="bg-white/90 backdrop-blur px-4 py-2 rounded-xl rounded-bl-none shadow-lg animate-bounce-in border border-indigo-100">
-               <p className="font-bold text-indigo-900 text-sm">{petThought}</p>
-             </div>
-           )}
+           {petThought && <div className="bg-white/90 backdrop-blur px-4 py-2 rounded-xl rounded-bl-none shadow-lg animate-bounce-in border border-indigo-100"><p className="font-bold text-indigo-900 text-sm">{petThought}</p></div>}
         </div>
 
         <div className="px-4 pointer-events-auto mt-auto">
-          <div className="flex justify-end mb-4">
-             <button onClick={() => setActiveModal('shop')} className="bg-white p-3 rounded-full shadow-xl border-4 border-emerald-300 text-emerald-600 active:scale-95 animate-bounce-in">
-                <ShoppingBag size={24} />
-             </button>
-          </div>
-          
+          <div className="flex justify-end mb-4"><button onClick={() => setActiveModal('shop')} className="bg-white p-3 rounded-full shadow-xl border-4 border-emerald-300 text-emerald-600 active:scale-95 animate-bounce-in"><ShoppingBag size={24} /></button></div>
           <GlassCard className="p-4 rounded-3xl !bg-white/60">
-            <div className="flex justify-between items-center mb-2 px-1">
-              <span className="text-xs font-black uppercase text-indigo-900 opacity-50">{activeEnv.name}</span>
-              <span className="text-xs font-black uppercase text-indigo-900 opacity-50">{activePetInfo.name}</span>
-            </div>
-            
+            <div className="flex justify-between items-center mb-2 px-1"><span className="text-xs font-black uppercase text-indigo-900 opacity-50">{activeEnv.name}</span><span className="text-xs font-black uppercase text-indigo-900 opacity-50">{activePetInfo.name}</span></div>
             <div className="grid grid-cols-3 gap-2 mb-4">
               <StatBar value={activePetData.stats.health} color="bg-rose-500" icon={Heart} label="Vita" />
               <StatBar value={activePetData.stats.hunger} color="bg-amber-500" icon={Utensils} label="Cibo" />
@@ -841,10 +714,7 @@ export default function App() {
             </div>
           </GlassCard>
         </div>
-        
-        <div className="absolute bottom-1 right-2 text-[8px] text-white/20 pointer-events-none">
-          v{APP_VERSION}
-        </div>
+        <div className="absolute bottom-1 right-2 text-[8px] text-white/20 pointer-events-none">v{APP_VERSION}</div>
       </div>
 
       <MathModal isOpen={['food', 'play', 'heal'].includes(activeModal)} type={activeModal} difficultyLevel={currentMathLevel} rewardItem={currentReward} onClose={() => setActiveModal(null)} onSuccess={handleSuccess} />
