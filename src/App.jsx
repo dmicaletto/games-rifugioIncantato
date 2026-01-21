@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Html, Billboard } from '@react-three/drei';
+import { OrbitControls, Html, Billboard, Stars } from '@react-three/drei';
 import { Heart, Smile, Utensils, Gamepad2, User, Activity, Sparkles, Zap, Volume2, VolumeX, ShoppingBag, Store, Coins, Download, Rotate3d, RefreshCw, Map as MapIcon, Lock, X, Flag, Timer } from 'lucide-react';
 import * as THREE from 'three';
 
@@ -11,7 +11,7 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "firebase/firestor
 
 // --- CONFIGURAZIONE SISTEMA ---
 const REPO_BASE = '/games-rifugioIncantato';
-const APP_VERSION = '1.5.1'; // Fix UI Ripristinata
+const APP_VERSION = '1.6.0'; // Race Mode Dynamic Update
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -143,6 +143,7 @@ class GeminiTutor {
     const maxNum = 10 + (level * 5); 
 
     if (type === 'race') {
+       // In gara: Solo operazioni base per velocità
        operator = Math.random() > 0.5 ? '+' : '-';
        n1 = rnd(1, maxNum); n2 = rnd(1, maxNum);
        if (operator === '-' && n1 < n2) [n1, n2] = [n2, n1];
@@ -271,7 +272,6 @@ const RaceScene = ({ petEmoji, gates, playerX }) => {
 
     useFrame(() => {
         if (playerRef.current) {
-            // Movimento fluido: il player segue playerX.current
             const targetX = playerX.current * 3;
             playerRef.current.position.x += (targetX - playerRef.current.position.x) * 0.1;
             playerRef.current.rotation.z = -playerRef.current.position.x * 0.1; 
@@ -454,6 +454,7 @@ export default function App() {
   const [activeModal, setActiveModal] = useState(null);
   const [gameMode, setGameMode] = useState('normal'); 
   const [raceState, setRaceState] = useState({ timeLeft: 30, score: 0, gates: [], currentProblem: null, targetScore: 5 });
+  const [raceFeedback, setRaceFeedback] = useState(null); // 'correct' | 'wrong' | null
   const playerX = useRef(0); 
 
   const [currentReward, setCurrentReward] = useState(null);
@@ -515,9 +516,13 @@ export default function App() {
 
   const startRace = async () => {
     setGameMode('race');
-    const firstProb = await aiTutor.generateProblem(gameState.levelSystem.level, 'race');
+    // Genera primo problema
+    const firstProb = aiTutor.generateLocalProblem(gameState.levelSystem.level, 'race');
     setRaceState({
-        timeLeft: 40, score: 0, targetScore: 5, currentProblem: firstProb,
+        timeLeft: 40,
+        score: 0,
+        targetScore: 5,
+        currentProblem: firstProb,
         gates: [
             { id: 1, z: -20, lane: 'left', value: firstProb.result, isCorrect: true },
             { id: 2, z: -20, lane: 'right', value: firstProb.result + 3, isCorrect: false }
@@ -544,43 +549,73 @@ export default function App() {
     }
   };
 
+  // LOOP GARA
   useEffect(() => {
     if (gameMode !== 'race') return;
     const interval = setInterval(() => {
         setRaceState(prev => {
             if (prev.timeLeft <= 0) { clearInterval(interval); endRace(false); return prev; }
+            
             let newGates = prev.gates.map(g => ({ ...g, z: g.z + 0.8 }));
             let newScore = prev.score;
             let newTime = prev.timeLeft - 0.05;
-            let needsSpawn = false;
+            let newProblem = prev.currentProblem;
+            let shouldGenerateNewGates = false;
 
+            // Collision Check
             const playerZ = 4; 
-            const hitGate = newGates.find(g => g.z > playerZ - 0.5 && g.z < playerZ + 0.5);
-            if (hitGate) {
+            const hitGateIndex = newGates.findIndex(g => g.z > playerZ - 0.5 && g.z < playerZ + 0.5);
+            
+            if (hitGateIndex !== -1) {
+                const hitGate = newGates[hitGateIndex];
                 const pLane = playerX.current < 0 ? 'left' : 'right';
                 if (pLane === hitGate.lane) {
-                    if (hitGate.isCorrect) { newScore++; newTime += 5; needsSpawn = true; }
-                    else { newTime -= 5; }
+                    if (hitGate.isCorrect) { 
+                        newScore++; 
+                        newTime += 5; 
+                        setRaceFeedback('correct');
+                        shouldGenerateNewGates = true;
+                    } else { 
+                        newTime -= 5;
+                        setRaceFeedback('wrong');
+                        shouldGenerateNewGates = true; 
+                    }
+                    setTimeout(() => setRaceFeedback(null), 500); // Reset feedback
+                    
+                    // Pulisci le porte correnti per evitare collisioni multiple
                     newGates = newGates.filter(g => Math.abs(g.z - hitGate.z) > 1);
                 }
             }
 
+            // Clean & Spawn
             newGates = newGates.filter(g => g.z < 10);
-            if (needsSpawn || newGates.length === 0) {
-                 const res = prev.currentProblem.result; 
-                 const wrong = res + 1;
-                 const correctLane = Math.random() > 0.5 ? 'left' : 'right';
+            
+            if (shouldGenerateNewGates || newGates.length === 0) {
+                 // Genera NUOVO problema
+                 if (shouldGenerateNewGates) {
+                     newProblem = aiTutor.generateLocalProblem(gameState.levelSystem.level, 'race');
+                 }
+
                  if (newGates.length === 0) {
+                    const res = newProblem.result;
+                    const wrong = res + Math.floor(Math.random() * 5) + 1;
+                    const correctLane = Math.random() > 0.5 ? 'left' : 'right';
                     newGates.push({ id: Date.now(), z: -40, lane: correctLane, value: res, isCorrect: true });
                     newGates.push({ id: Date.now()+1, z: -40, lane: correctLane==='left'?'right':'left', value: wrong, isCorrect: false });
                  }
             }
-            if (newScore >= prev.targetScore) { clearInterval(interval); endRace(true); return prev; }
-            return { ...prev, gates: newGates, timeLeft: newTime, score: newScore };
+
+            if (newScore >= prev.targetScore) {
+                clearInterval(interval);
+                endRace(true);
+                return prev;
+            }
+
+            return { ...prev, gates: newGates, timeLeft: newTime, score: newScore, currentProblem: newProblem };
         });
     }, 50);
     return () => clearInterval(interval);
-  }, [gameMode]);
+  }, [gameMode, gameState.levelSystem.level]);
 
   const handlePointerMove = (e) => {
      if (gameMode !== 'race') return;
@@ -645,12 +680,20 @@ export default function App() {
             </Canvas>
         </div>
 
+        {/* FEEDBACK OVERLAY (Gara) */}
+        {raceFeedback && (
+            <div className={`absolute inset-0 z-50 pointer-events-none opacity-50 ${raceFeedback === 'correct' ? 'bg-green-500' : 'bg-red-500 animate-shake'}`}></div>
+        )}
+        
         {/* UI Overlay per Gara */}
         {gameMode === 'race' && (
             <div className="absolute inset-0 z-20 pointer-events-none flex flex-col items-center pt-10">
                 <div className="bg-white/90 px-8 py-4 rounded-3xl border-4 border-indigo-500 shadow-xl">
                     <div className="text-4xl font-black text-indigo-900">{raceState.currentProblem?.text}</div>
                 </div>
+                {raceFeedback === 'correct' && <div className="absolute top-1/2 text-6xl font-black text-green-400 drop-shadow-lg animate-bounce">+5s</div>}
+                {raceFeedback === 'wrong' && <div className="absolute top-1/2 text-6xl font-black text-red-500 drop-shadow-lg animate-shake">-5s</div>}
+                
                 <div className="absolute top-4 right-4 text-white font-bold text-xl">
                     ⏱️ {Math.ceil(raceState.timeLeft)}s
                 </div>
@@ -697,7 +740,7 @@ export default function App() {
                      </GlassCard>
                 </div>
                 
-                {/* Debug Test Gara (Seminascosto) */}
+                {/* Debug Test Gara */}
                 <div className="absolute top-20 left-4 pointer-events-auto opacity-20 hover:opacity-100 transition-opacity">
                     <button onClick={startRace} className="bg-slate-800 text-white text-[10px] px-2 py-1 rounded">Test Gara</button>
                 </div>
