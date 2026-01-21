@@ -11,7 +11,7 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "firebase/firestor
 
 // --- CONFIGURAZIONE SISTEMA ---
 const REPO_BASE = '/games-rifugioIncantato';
-const APP_VERSION = '1.6.0'; // Race Mode Dynamic Update
+const APP_VERSION = '1.6.1'; // Fix Mappa + Lingua AI
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -143,18 +143,28 @@ class GeminiTutor {
     const maxNum = 10 + (level * 5); 
 
     if (type === 'race') {
-       // In gara: Solo operazioni base per velocità
        operator = Math.random() > 0.5 ? '+' : '-';
        n1 = rnd(1, maxNum); n2 = rnd(1, maxNum);
        if (operator === '-' && n1 < n2) [n1, n2] = [n2, n1];
        return { text: `${n1} ${operator} ${n2}`, result: operator === '+' ? n1 + n2 : n1 - n2 };
     }
     
-    // Logica standard
+    // Logica standard con AI
     const localProblem = this.generateLocalProblem(level, type);
     if (!this.apiKey) return localProblem;
     try {
-      const prompt = `Genera un problema matematico per bambino livello ${level}. Tipo: ${type}. JSON: { "text": "...", "result": 123 }`;
+      const prompt = `
+        Sei un tutor di matematica per bambini italiani (Livello: ${level}).
+        Genera un problema matematico.
+        Tipo richiesto: ${type === 'play' ? 'Moltiplicazioni' : type === 'food' ? 'Somme/Sottrazioni' : 'Divisioni'}.
+        
+        ISTRUZIONI TASSATIVE:
+        1. Genera il testo ESCLUSIVAMENTE IN ITALIANO.
+        2. Nel 50% dei casi genera OPERAZIONI SECCHE (es. "12 + 15", "5 x 4").
+        3. Nel 50% dei casi genera BREVI PROBLEMI A PAROLE in ITALIANO (es. "Hai 5 mele, ne mangi 2. Quante ne restano?").
+        
+        Rispondi SOLO JSON valido: { "text": "testo domanda in italiano", "result": numero_intero }
+      `;
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${this.apiKey}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } })
@@ -210,7 +220,7 @@ const ActionButton = ({ icon: Icon, label, color, gradient, onClick, disabled })
   </button>
 );
 
-// --- COMPONENTI 3D GARA (WARP SPEED) ---
+// --- COMPONENTI 3D GARA ---
 const WarpSpeed = () => {
     const count = 400;
     const mesh = useRef();
@@ -389,9 +399,15 @@ const ProfileModal = ({ isOpen, onClose, userInfo, onSave }) => {
           <h3 className="text-2xl font-black text-center text-indigo-900 mb-6 flex justify-center items-center gap-2"><MapIcon /> Mappa</h3>
           <div className="space-y-4">
             <div onClick={() => onTravel('room', 'fox')} className={`p-4 rounded-2xl border-4 cursor-pointer transition-all flex items-center gap-4 ${currentEnv === 'room' ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>
-              <div className="text-4xl">🦊</div><div><div className="font-bold text-lg text-indigo-900">Cameretta</div></div>
+              <div className="text-4xl">🦊</div><div><div className="font-bold text-lg text-indigo-900">Cameretta</div><div className="text-xs text-indigo-500 font-semibold">Casa di Batuffolo</div></div>{currentEnv === 'room' && <span className="ml-auto text-indigo-600 font-bold">📍 Qui</span>}
             </div>
             {/* Altri ambienti... */}
+            <div onClick={() => { if (unlockedPets.includes('dragon')) onTravel('forest', 'dragon'); }} className={`p-4 rounded-2xl border-4 transition-all flex items-center gap-4 ${unlockedPets.includes('dragon') ? 'cursor-pointer border-emerald-500 bg-emerald-50' : 'border-slate-200 opacity-60 grayscale'}`}>
+            <div className="text-4xl">🐲</div><div><div className="font-bold text-lg text-emerald-900">Foresta Incantata</div><div className="text-xs text-emerald-600 font-semibold">{unlockedPets.includes('dragon') ? "Casa di Scintilla" : "Sblocca al Livello 5"}</div></div>{!unlockedPets.includes('dragon') && <Lock className="ml-auto text-slate-400" />}{currentEnv === 'forest' && <span className="ml-auto text-emerald-600 font-bold">📍 Qui</span>}
+          </div>
+          <div onClick={() => { if (unlockedPets.includes('turtle')) onTravel('beach', 'turtle'); }} className={`p-4 rounded-2xl border-4 transition-all flex items-center gap-4 ${unlockedPets.includes('turtle') ? 'cursor-pointer border-sky-500 bg-sky-50' : 'border-slate-200 opacity-60 grayscale'}`}>
+            <div className="text-4xl">🐢</div><div><div className="font-bold text-lg text-sky-900">Spiaggia Coralli</div><div className="text-xs text-sky-600 font-semibold">{unlockedPets.includes('turtle') ? "Casa di Guscio" : "Sblocca al Livello 10"}</div></div>{!unlockedPets.includes('turtle') && <Lock className="ml-auto text-slate-400" />}{currentEnv === 'beach' && <span className="ml-auto text-sky-600 font-bold">📍 Qui</span>}
+          </div>
           </div>
         </div>
       </div>
@@ -434,7 +450,7 @@ const ProfileModal = ({ isOpen, onClose, userInfo, onSave }) => {
           <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 transition-colors"><X size={24} /></button>
           <div className="text-center mb-6 pt-2"><h3 className="text-xl font-bold text-indigo-900">Risolvi</h3></div>
           <div className="bg-indigo-50 rounded-2xl p-6 mb-6 text-center border-2 border-indigo-100 min-h-[120px] flex items-center justify-center">
-            {isLoading ? <div className="animate-pulse text-indigo-400 font-bold">...</div> : <span className={`font-black text-indigo-600 ${problem?.text.length > 10 ? 'text-xl' : 'text-5xl'}`}>{problem?.text}</span>}
+            {isLoading ? <div className="animate-pulse text-indigo-400 font-bold">Generazione magica... ✨</div> : <span className={`font-black text-indigo-600 ${problem?.text.length > 10 ? 'text-xl' : 'text-5xl'}`}>{problem?.text}</span>}
           </div>
           {!isLoading && (
             <div className="flex gap-2 w-full">
@@ -623,7 +639,7 @@ export default function App() {
      playerX.current = (clientX / window.innerWidth) * 2 - 1;
   };
 
-  const handleSuccess = (type, time) => {
+  const handleSuccess = async (type, time) => {
     setGameState(prev => {
       let earnedStars = 10;
       let newLevelSystem = { ...prev.levelSystem, currentStars: prev.levelSystem.currentStars + earnedStars };
@@ -633,14 +649,33 @@ export default function App() {
       }
       return { ...prev, wallet: { money: prev.wallet.money + 10 }, levelSystem: newLevelSystem };
     });
+    
+    const newLevel = await aiTutor.evaluateLevel(gameState.difficulty?.mathLevel || 1);
+    if (newLevel !== (gameState.difficulty?.mathLevel || 1)) {
+        setGameState(prev => ({
+            ...prev,
+            difficulty: { ...prev.difficulty, mathLevel: newLevel }
+        }));
+    }
     speak("Evviva!");
   };
 
-  const handleTravel = (envId, petId) => { setGameState(prev => ({ ...prev, activePetId: petId })); setActiveModal(null); speak(`Andiamo!`); };
-  const handleBuy = (item) => { if (gameState.wallet.money >= item.price) { setGameState(prev => { const env = PETS_INFO[prev.activePetId].defaultEnv; const newDecor = { ...prev.decor }; if(!newDecor[env]) newDecor[env] = {}; newDecor[env][item.type] = item; return { ...prev, wallet: { money: prev.wallet.money - item.price }, inventory: [...prev.inventory, item.id], decor: newDecor }; }); speak("Grazie!"); } };
-  const handleUpdateApp = () => { if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(regs => { for(let reg of regs) reg.unregister(); window.location.reload(true); }); else window.location.reload(true); };
-  const handleInstallClick = async () => { if (deferredPrompt) { deferredPrompt.prompt(); const { outcome } = await deferredPrompt.userChoice; if (outcome === 'accepted') setDeferredPrompt(null); } };
-  const handleUpdateProfile = (newInfo) => { setGameState(prev => ({ ...prev, userInfo: newInfo })); };
+  const handleUpdateApp = () => {
+    if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(regs => { for(let reg of regs) reg.unregister(); window.location.reload(true); });
+    else window.location.reload(true);
+  };
+
+  const handleInstallClick = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') setDeferredPrompt(null);
+    }
+  };
+
+  const handleUpdateProfile = (newInfo) => {
+    setGameState(prev => ({ ...prev, userInfo: newInfo }));
+  };
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -712,6 +747,7 @@ export default function App() {
                         <div className="flex flex-col w-full"><span className="font-bold text-sm text-indigo-900">{displayName}</span><LevelBar current={gameState.levelSystem.currentStars} max={gameState.levelSystem.nextLevelStars} /><div className="text-[9px] text-indigo-500 font-bold text-right mt-0.5">Lvl {gameState.levelSystem.level}</div></div>
                     </GlassCard>
                     <div className="flex gap-2">
+                        <button onClick={() => setActiveModal('map')} className="p-3 rounded-full bg-white/20 backdrop-blur border border-white/30 text-white shadow-lg active:scale-95"><MapIcon size={20} /></button>
                         {updateAvailable && <button onClick={handleUpdateApp} className="p-3 rounded-full bg-green-500 text-white shadow-lg animate-pulse"><RefreshCw size={20} className="animate-spin" /></button>}
                         {deferredPrompt && <button onClick={handleInstallClick} className="p-3 rounded-full bg-indigo-600 text-white shadow-lg animate-pulse active:scale-95"><Download size={20} /></button>}
                         <button onClick={() => setIsMuted(!isMuted)} className="p-3 rounded-full bg-white/20 backdrop-blur border border-white/30 shadow-lg text-white hover:bg-white/30 transition active:scale-95">{isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}</button>
