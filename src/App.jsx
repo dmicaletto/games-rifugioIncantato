@@ -11,7 +11,7 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "firebase/firestor
 
 // --- CONFIGURAZIONE SISTEMA ---
 const REPO_BASE = '/games-rifugioIncantato';
-const APP_VERSION = '1.6.1'; // Fix Mappa + Lingua AI
+const APP_VERSION = '1.6.2'; // Fix handleBuy e cleanup
 
 const firebaseConfig = {
   apiKey: "AIzaSyDZp4rC_LYox1YlBW8eDqsycmqH08i4zP8",
@@ -65,6 +65,15 @@ const PETS_INFO = {
   turtle: { id: 'turtle', name: "Guscio", emoji: "🐢", defaultEnv: 'beach' }
 };
 
+const PET_PHRASES = {
+  hungry: ["Pancino vuoto...", "Ho fame!", "Cibo?"],
+  bored: ["Che noia...", "Giochiamo?", "Uffa..."],
+  sick: ["Non sto bene...", "Aiuto...", "Gulp..."],
+  happy: ["Sei mitica!", "Ti voglio bene!", "Evviva!"],
+  sleepy: ["Zzz...", "Nanna..."],
+  intro: ["Ciao!", "Eccomi!"]
+};
+
 // --- DATABASE OGGETTI ---
 const FOOD_ITEMS = [
   { name: "Mela", emoji: "🍎", value: 15 },
@@ -105,7 +114,7 @@ const MARKET_ITEMS = {
     { id: 'robot', name: "Robot", emoji: "🤖", price: 100, type: 'toy', pos: [-2, 0.6, 2], scale: 1.5, levelReq: 1 },
     { id: 'bear', name: "Orsetto", emoji: "🧸", price: 75, type: 'toy', pos: [2, 0.5, 2], scale: 1.5, levelReq: 1 },
     { id: 'car', name: "Auto", emoji: "🏎️", price: 85, type: 'toy', pos: [0, 0.4, 3], scale: 1.2, levelReq: 1 },
-    { id: 'telescope', name: "Telescopio", emoji: "🔭", price: 200, type: 'toy_adv', pos: [0, 1, 4], scale: 2, levelReq: 5 },
+    { id: 'telescope', name: "Telescopio", emoji: "🔭", price: 200, type: 'toy_adv', pos: [0, 1, 4], scale: 2, levelReq: 3 },
     { id: 'boat', name: "Barchetta", emoji: "⛵", price: 150, type: 'toy_sea', pos: [0, 0.5, 3], scale: 1.5, levelReq: 10 }
   ]
 };
@@ -400,7 +409,6 @@ const ProfileModal = ({ isOpen, onClose, userInfo, onSave }) => {
             <div onClick={() => onTravel('room', 'fox')} className={`p-4 rounded-2xl border-4 cursor-pointer transition-all flex items-center gap-4 ${currentEnv === 'room' ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>
               <div className="text-4xl">🦊</div><div><div className="font-bold text-lg text-indigo-900">Cameretta</div><div className="text-xs text-indigo-500 font-semibold">Casa di Batuffolo</div></div>{currentEnv === 'room' && <span className="ml-auto text-indigo-600 font-bold">📍 Qui</span>}
             </div>
-            {/* Altri ambienti... */}
             <div onClick={() => { if (unlockedPets.includes('dragon')) onTravel('forest', 'dragon'); }} className={`p-4 rounded-2xl border-4 transition-all flex items-center gap-4 ${unlockedPets.includes('dragon') ? 'cursor-pointer border-emerald-500 bg-emerald-50' : 'border-slate-200 opacity-60 grayscale'}`}>
             <div className="text-4xl">🐲</div><div><div className="font-bold text-lg text-emerald-900">Foresta Incantata</div><div className="text-xs text-emerald-600 font-semibold">{unlockedPets.includes('dragon') ? "Casa di Scintilla" : "Sblocca al Livello 5"}</div></div>{!unlockedPets.includes('dragon') && <Lock className="ml-auto text-slate-400" />}{currentEnv === 'forest' && <span className="ml-auto text-emerald-600 font-bold">📍 Qui</span>}
           </div>
@@ -447,7 +455,7 @@ const ProfileModal = ({ isOpen, onClose, userInfo, onSave }) => {
       <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" style={{zIndex: 200}}>
         <div className={`bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl relative transform transition-all ${feedback === 'wrong' ? 'animate-shake border-4 border-red-300' : 'border-4 border-white'}`}>
           <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 transition-colors"><X size={24} /></button>
-          <div className="text-center mb-6 pt-2"><h3 className="text-xl font-bold text-indigo-900">Risolvi</h3></div>
+          <div className="text-center mb-6 pt-2"><h3 className="text-xl font-bold text-indigo-900">Risolvi per {rewardItem?.emoji}</h3></div>
           <div className="bg-indigo-50 rounded-2xl p-6 mb-6 text-center border-2 border-indigo-100 min-h-[120px] flex items-center justify-center">
             {isLoading ? <div className="animate-pulse text-indigo-400 font-bold">Generazione magica... ✨</div> : <span className={`font-black text-indigo-600 ${problem?.text.length > 10 ? 'text-xl' : 'text-5xl'}`}>{problem?.text}</span>}
           </div>
@@ -534,10 +542,7 @@ export default function App() {
     // Genera primo problema
     const firstProb = aiTutor.generateLocalProblem(gameState.levelSystem.level, 'race');
     setRaceState({
-        timeLeft: 40,
-        score: 0,
-        targetScore: 5,
-        currentProblem: firstProb,
+        timeLeft: 40, score: 0, targetScore: 5, currentProblem: firstProb,
         gates: [
             { id: 1, z: -20, lane: 'left', value: firstProb.result, isCorrect: true },
             { id: 2, z: -20, lane: 'right', value: firstProb.result + 3, isCorrect: false }
@@ -564,18 +569,16 @@ export default function App() {
     }
   };
 
-  // LOOP GARA
   useEffect(() => {
     if (gameMode !== 'race') return;
     const interval = setInterval(() => {
         setRaceState(prev => {
             if (prev.timeLeft <= 0) { clearInterval(interval); endRace(false); return prev; }
-            
             let newGates = prev.gates.map(g => ({ ...g, z: g.z + 0.8 }));
             let newScore = prev.score;
             let newTime = prev.timeLeft - 0.05;
-            let newProblem = prev.currentProblem;
             let shouldGenerateNewGates = false;
+            let newProblem = prev.currentProblem;
 
             // Collision Check
             const playerZ = 4; 
@@ -595,9 +598,7 @@ export default function App() {
                         setRaceFeedback('wrong');
                         shouldGenerateNewGates = true; 
                     }
-                    setTimeout(() => setRaceFeedback(null), 500); // Reset feedback
-                    
-                    // Pulisci le porte correnti per evitare collisioni multiple
+                    setTimeout(() => setRaceFeedback(null), 500); 
                     newGates = newGates.filter(g => Math.abs(g.z - hitGate.z) > 1);
                 }
             }
@@ -606,14 +607,13 @@ export default function App() {
             newGates = newGates.filter(g => g.z < 10);
             
             if (shouldGenerateNewGates || newGates.length === 0) {
-                 // Genera NUOVO problema
                  if (shouldGenerateNewGates) {
                      newProblem = aiTutor.generateLocalProblem(gameState.levelSystem.level, 'race');
                  }
 
                  if (newGates.length === 0) {
                     const res = newProblem.result;
-                    const wrong = res + Math.floor(Math.random() * 5) + 1;
+                    const wrong = res + 1; // Simplificato per evitare problemi di undefined
                     const correctLane = Math.random() > 0.5 ? 'left' : 'right';
                     newGates.push({ id: Date.now(), z: -40, lane: correctLane, value: res, isCorrect: true });
                     newGates.push({ id: Date.now()+1, z: -40, lane: correctLane==='left'?'right':'left', value: wrong, isCorrect: false });
@@ -659,29 +659,31 @@ export default function App() {
     speak("Evviva!");
   };
 
-  const handleUpdateApp = () => {
-    if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(regs => { for(let reg of regs) reg.unregister(); window.location.reload(true); });
-    else window.location.reload(true);
+  const handleTravel = (envId, petId) => { setGameState(prev => ({ ...prev, activePetId: petId })); setActiveModal(null); speak(`Andiamo!`); };
+  
+  const handleBuy = (item) => { 
+    if (gameState.wallet.money >= item.price) { 
+      setGameState(prev => { 
+        const env = PETS_INFO[prev.activePetId].defaultEnv; 
+        const newDecor = { ...prev.decor }; 
+        if(!newDecor[env]) newDecor[env] = {}; 
+        newDecor[env][item.type] = item; 
+        return { ...prev, wallet: { money: prev.wallet.money - item.price }, inventory: [...prev.inventory, item.id], decor: newDecor }; 
+      }); 
+      speak("Grazie!"); 
+    } 
   };
-
-  const handleInstallClick = async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') setDeferredPrompt(null);
-    }
-  };
-
-  const handleUpdateProfile = (newInfo) => {
-    setGameState(prev => ({ ...prev, userInfo: newInfo }));
-  };
+  
+  const handleUpdateApp = () => { if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(regs => { for(let reg of regs) reg.unregister(); window.location.reload(true); }); else window.location.reload(true); };
+  const handleInstallClick = async () => { if (deferredPrompt) { deferredPrompt.prompt(); const { outcome } = await deferredPrompt.userChoice; if (outcome === 'accepted') setDeferredPrompt(null); } };
+  const handleUpdateProfile = (newInfo) => { setGameState(prev => ({ ...prev, userInfo: newInfo })); };
 
   useEffect(() => {
     const interval = setInterval(() => {
       if (activeModal) return;
       const mood = gameState.petsData[gameState.activePetId].stats.health < 40 ? 'sick' : gameState.petsData[gameState.activePetId].stats.hunger < 40 ? 'hungry' : 'happy';
-      const phrases = { hungry: ["Fame!"], happy: ["Ciao!"], sick: ["Ahi!"] };
-      const txt = phrases[mood][0];
+      const phrases = PET_PHRASES[mood];
+      const txt = phrases[Math.floor(Math.random() * phrases.length)];
       setPetThought(txt); speak(txt); setTimeout(() => setPetThought(null), 4000);
     }, 15000);
     return () => clearInterval(interval);
