@@ -13,7 +13,6 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "firebase/firestor
 const REPO_BASE = '/games-rifugioIncantato';
 const APP_VERSION = '1.6.1'; // Fix Mappa + Lingua AI
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyDZp4rC_LYox1YlBW8eDqsycmqH08i4zP8",
   authDomain: "nutriai-f081c.firebaseapp.com",
